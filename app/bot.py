@@ -67,27 +67,27 @@ def user_agreement_url(settings: Settings) -> str:
 
 def build_home_text(ui: dict[str, str]) -> str:
     return (
-        f"🚀 {ui['brand_name']}\n"
+        f"{ui['brand_name']}\n"
         f"{ui['brand_tagline']}\n\n"
         f"{ui['welcome_text']}\n\n"
-        "Что вы получаете:\n"
+        "Что входит:\n"
         f"{ui['features_text']}\n\n"
-        "Нажмите кнопку ниже, чтобы выбрать тариф."
+        "Выберите действие ниже 👇"
     )
 
 
 def build_about_text(ui: dict[str, str]) -> str:
-    return f"{ui['button_about']}\n\n{ui['about_text']}"
+    return f"{ui['button_about']}\n\n{ui['about_text']}\n\nПодключение и продление занимают всего пару касаний."
 
 
 def build_setup_text(ui: dict[str, str]) -> str:
-    return f"{ui['button_setup']}\n\n{ui['setup_text']}"
+    return f"{ui['button_setup']}\n\n{ui['setup_text']}\n\nЕсли что-то не получается, помощь всегда рядом."
 
 
 def build_plans_text(ui: dict[str, str], server_labels: list[str]) -> str:
     lines = [ui["button_plans"], ""]
     if server_labels:
-        lines.append("Наши доступные серверы:")
+        lines.append("Доступные серверы:")
         lines.extend(f"• {label}" for label in server_labels)
         lines.append("")
     lines.append(ui["plans_intro"])
@@ -99,16 +99,19 @@ def plan_text(plan) -> str:
     lines = [
         f"🔥 {plan['name']}",
         "",
-        f"Цена: {format_price_rub(int(plan['price_rub']))}",
-        f"Срок действия: {int(plan['duration_days'])} дней",
-        f"Трафик: {format_traffic_gb(int(plan['traffic_gb']))}",
+        f"💳 Стоимость: {format_price_rub(int(plan['price_rub']))}",
+        f"🗓 Срок: {int(plan['duration_days'])} дней",
+        f"🌐 Трафик: {format_traffic_gb(int(plan['traffic_gb']))}",
     ]
     if description:
         lines.extend(["", description])
     lines.extend(
         [
             "",
-            "После оплаты бот автоматически подготовит доступ, отправит подписку и QR-код для подключения.",
+            "После оплаты вы получите:",
+            "• готовую подписку для приложения",
+            "• QR-код для быстрого входа",
+            "• кнопки для открытия и обновления доступа",
         ]
     )
     return "\n".join(lines)
@@ -137,11 +140,11 @@ def orders_text(orders: list, ui: dict[str, str]) -> str:
     if not orders:
         return (
             f"{ui['button_orders']}\n\n"
-            "У вас пока нет активных заказов.\n\n"
+            "У вас пока нет заказов.\n\n"
             "Выберите тариф и бот сразу подготовит новый заказ."
         )
 
-    lines = [ui["button_orders"], ""]
+    lines = [ui["button_orders"], "", f"Всего заказов: {len(orders)}", ""]
     for row in orders[:8]:
         lines.append(f"{status_badge(str(row['status']))}\n#{row['public_id']} • {row['plan_name']}")
         lines.append("")
@@ -158,8 +161,8 @@ def order_text(settings: Settings, order, payment_instructions: str) -> str:
         f"{status_badge(status)}",
         f"Заказ #{order['public_id']}",
         "",
-        f"Тариф: {plan_name}",
-        f"Создан: {format_date(str(order['created_at']))}",
+        f"📦 Тариф: {plan_name}",
+        f"🕓 Создан: {format_date(str(order['created_at']))}",
         "",
         *build_order_price_block(order),
     ]
@@ -228,9 +231,9 @@ def checkout_text(order, payment_instructions: str) -> str:
         "🧾 Новый заказ",
         "",
         f"Номер: #{order['public_id']}",
-        f"Тариф: {plan_name}",
-        f"Срок: {int(order['duration_days'])} дней",
-        f"Трафик: {format_traffic_gb(int(order['traffic_gb']))}",
+        f"📦 Тариф: {plan_name}",
+        f"🗓 Срок: {int(order['duration_days'])} дней",
+        f"🌐 Трафик: {format_traffic_gb(int(order['traffic_gb']))}",
         "",
         *build_order_price_block(order),
     ]
@@ -266,7 +269,7 @@ def checkout_text(order, payment_instructions: str) -> str:
 
 
 def support_text(ui: dict[str, str], support_contact: str) -> str:
-    return f"{ui['button_support']}\n\n{ui['support_text']}\n\nКонтакт: {support_contact}"
+    return f"{ui['button_support']}\n\n{ui['support_text']}\n\nКонтакт для связи: {support_contact}"
 
 
 def profile_text(
@@ -295,12 +298,13 @@ def profile_text(
         "",
         f"ID: {profile['telegram_id']}",
         f"Имя: {(profile['first_name'] or '').strip() or 'Клиент'}",
-        f"Подписок куплено: {delivered_orders_count}",
+        f"Куплено подписок: {delivered_orders_count}",
         f"Реферальный код: {referral_code}",
         "",
-        f"Бонусный баланс: {format_price_rub(bonus_balance)}",
-        f"Приглашено друзей: {referred_users_count}",
-        f"Заработано по рефералке: {format_price_rub(int(profile['total_referral_earned_rub'] or 0))}",
+        "Ваши бонусы:",
+        f"• бонусный баланс: {format_price_rub(bonus_balance)}",
+        f"• приглашено друзей: {referred_users_count}",
+        f"• заработано по рефералке: {format_price_rub(int(profile['total_referral_earned_rub'] or 0))}",
         "",
         "Ваши выгоды:",
         f"• друг получает скидку {referral_discount}% на первый заказ",
@@ -338,7 +342,7 @@ def profile_text(
 
     if bot_username and referral_code:
         referral_link = f"https://t.me/{bot_username}?start=ref_{referral_code}"
-        lines.extend(["", "Ваша ссылка:", referral_link])
+        lines.extend(["", "Ваша ссылка для приглашений:", referral_link])
 
     lines.extend(["", f"Поддержка: {support_contact}"])
     return "\n".join(lines)
@@ -354,11 +358,11 @@ def main_menu(settings: Settings, ui: dict[str, str]) -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton(text=ui["button_profile"], callback_data="profile"),
-                InlineKeyboardButton(text=ui["button_about"], callback_data="about"),
+                InlineKeyboardButton(text=ui["button_support"], callback_data="support"),
             ],
             [
+                InlineKeyboardButton(text=ui["button_about"], callback_data="about"),
                 InlineKeyboardButton(text=ui["button_setup"], callback_data="setup"),
-                InlineKeyboardButton(text=ui["button_support"], callback_data="support"),
             ],
             [
                 InlineKeyboardButton(text=ui["button_privacy_policy"], url=privacy_policy_url(settings)),
@@ -421,7 +425,6 @@ def orders_keyboard(orders: list, ui: dict[str, str]) -> InlineKeyboardMarkup:
 
 def order_keyboard(settings: Settings, order, support_contact: str, ui: dict[str, str]) -> InlineKeyboardMarkup:
     rows: list[list[InlineKeyboardButton]] = []
-    partner_cabinet_url = None
     payment_url = str(order["payment_url"] or "").strip()
     status = str(order["status"])
     is_trial = int(order["is_trial"] or 0) == 1
@@ -438,12 +441,6 @@ def order_keyboard(settings: Settings, order, support_contact: str, ui: dict[str
     if status == "delivered" and short_link and short_link != proxy_link:
         rows.append([InlineKeyboardButton(text=ui["button_short_link"], url=short_link)])
 
-    if partner_cabinet_url:
-        rows.append([InlineKeyboardButton(text="💼 ЛК партнера", url=partner_cabinet_url)])
-    if partner_cabinet_url:
-        rows.append([InlineKeyboardButton(text="💼 ЛК партнера", url=partner_cabinet_url)])
-    if partner_cabinet_url:
-        rows.append([InlineKeyboardButton(text="💼 ЛК партнера", url=partner_cabinet_url)])
     support_url = support_contact_url(support_contact)
     if support_url:
         rows.append([InlineKeyboardButton(text=ui["button_write_support"], url=support_url)])
@@ -454,28 +451,6 @@ def order_keyboard(settings: Settings, order, support_contact: str, ui: dict[str
             InlineKeyboardButton(text="🏠 Меню", callback_data="menu"),
         ]
     )
-    return InlineKeyboardMarkup(inline_keyboard=rows)
-
-
-def profile_keyboard(
-    ui: dict[str, str],
-    share_url: str | None,
-    support_contact: str,
-    partner_cabinet_url: str | None = None,
-) -> InlineKeyboardMarkup:
-    rows: list[list[InlineKeyboardButton]] = []
-    if share_url:
-        rows.append([InlineKeyboardButton(text="🎁 Пригласить друга", url=share_url)])
-    support_url = support_contact_url(support_contact)
-    rows.append(
-        [
-            InlineKeyboardButton(text=ui["button_plans"], callback_data="plans"),
-            InlineKeyboardButton(text=ui["button_orders"], callback_data="orders"),
-        ]
-    )
-    if support_url:
-        rows.append([InlineKeyboardButton(text=ui["button_write_support"], url=support_url)])
-    rows.append([InlineKeyboardButton(text="🏠 Меню", callback_data="menu")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -639,9 +614,10 @@ def build_router(settings: Settings, db: Database, bot: Bot, xui: XuiClient, pla
         code = db.generate_partner_login_code(int(profile["id"]))
         login_url = f"{settings.public_base_url.rstrip('/')}/partner/login"
         await callback.message.answer(
-            f"Код для входа в ЛК: {code}\n"
-            f"Страница входа: {login_url}\n"
-            "Код действует 10 минут и сработает один раз."
+            "💼 Вход в партнерский кабинет\n\n"
+            f"Код: {code}\n"
+            f"Страница входа: {login_url}\n\n"
+            "Код действует 10 минут и работает только один раз."
         )
         await safe_answer(callback, "Код отправлен в чат")
 
