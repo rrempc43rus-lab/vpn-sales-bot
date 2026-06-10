@@ -549,12 +549,19 @@ def build_router(settings: Settings, db: Database, bot: Bot, xui: XuiClient, pla
     async def send_home_message(chat_id: int, *, with_banner: bool = False, extra_notice: str | None = None) -> None:
         current_ui = ui()
         banner_path = resolve_asset_path(current_ui.get("hero_image_path"))
-        if with_banner and banner_path and banner_path.exists():
-            await bot.send_photo(chat_id, FSInputFile(str(banner_path)))
         text = build_home_text(current_ui)
         if extra_notice:
             text = f"{extra_notice}\n\n{text}"
-        await bot.send_message(chat_id, text, reply_markup=main_menu(settings, current_ui))
+        markup = main_menu(settings, current_ui)
+        if with_banner and banner_path and banner_path.exists():
+            await bot.send_photo(
+                chat_id,
+                FSInputFile(str(banner_path)),
+                caption=text,
+                reply_markup=markup,
+            )
+            return
+        await bot.send_message(chat_id, text, reply_markup=markup)
 
     async def show_profile(target: Message | CallbackQuery) -> None:
         current_ui = ui()
