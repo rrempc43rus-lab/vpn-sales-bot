@@ -202,6 +202,15 @@ class Database:
                     created_at TEXT NOT NULL,
                     FOREIGN KEY(user_id) REFERENCES tg_users(id)
                 );
+
+                CREATE TABLE IF NOT EXISTS partner_login_codes (
+                    user_id INTEGER PRIMARY KEY,
+                    code TEXT UNIQUE NOT NULL,
+                    expires_at TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    used_at TEXT,
+                    FOREIGN KEY(user_id) REFERENCES tg_users(id)
+                );
                 """
             )
             self._run_migrations(conn)
@@ -258,6 +267,12 @@ class Database:
             """
             CREATE UNIQUE INDEX IF NOT EXISTS idx_partner_access_tokens_token
             ON partner_access_tokens(token)
+            """
+        )
+        conn.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_partner_login_codes_code
+            ON partner_login_codes(code)
             """
         )
         self._backfill_referral_codes(conn)
@@ -468,6 +483,85 @@ class Database:
             return conn.execute(
                 "SELECT * FROM tg_users WHERE id = ?",
                 (int(row["id"]),),
+            ).fetchone()
+
+    def _partner_code_is_active(self, expires_at: str | None, used_at: str | None) -> bool:
+        if used_at:
+            return False
+        if not expires_at:
+            return False
+        try:
+            return datetime.fromisoformat(expires_at) > datetime.now(UTC)
+        except ValueError:
+            return False
+
+    def generate_partner_login_code(self, user_id: int, *, ttl_minutes: int = 10) -> str:
+        now = utc_now_iso()
+        expires_at = future_iso(hours=0)  # placeholder updated below
+        expires_at = (datetime.now(UTC) + timedelta(minutes=max(1, ttl_minutes))).replace(microsecond=0).isoformat()
+        with self.connect() as conn:
+            user = conn.execute(
+                "SELECT id, is_partner FROM tg_users WHERE id = ?",
+                (user_id,),
+            ).fetchone()
+            if user is None or int(user["is_partner"] or 0) != 1:
+                raise ValueError("Partner access is unavailable")
+
+            while True:
+                code = f"{secrets.randbelow(1_000_000):06d}"
+                exists = conn.execute(
+                    """
+                    SELECT 1
+                    FROM partner_login_codes
+                    WHERE code = ? AND used_at IS NULL AND expires_at > ?
+                    """,
+                    (code, now),
+                ).fetchone()
+                if exists is None:
+                    break
+
+            conn.execute(
+                """
+                INSERT INTO partner_login_codes(user_id, code, expires_at, created_at, used_at)
+                VALUES (?, ?, ?, ?, NULL)
+                ON CONFLICT(user_id) DO UPDATE SET
+                    code = excluded.code,
+                    expires_at = excluded.expires_at,
+                    created_at = excluded.created_at,
+                    used_at = NULL
+                """,
+                (user_id, code, expires_at, now),
+            )
+            return code
+
+    def consume_partner_login_code(self, code: str, *, expected_user_id: int | None = None) -> sqlite3.Row | None:
+        normalized = "".join(ch for ch in str(code).strip() if ch.isdigit())
+        if not normalized:
+            return None
+        now = utc_now_iso()
+        with self.connect() as conn:
+            row = conn.execute(
+                """
+                SELECT plc.user_id, plc.code, plc.expires_at, plc.used_at, u.*
+                FROM partner_login_codes plc
+                JOIN tg_users u ON u.id = plc.user_id
+                WHERE plc.code = ?
+                """,
+                (normalized,),
+            ).fetchone()
+            if row is None or int(row["is_partner"] or 0) != 1:
+                return None
+            if expected_user_id is not None and int(row["user_id"]) != int(expected_user_id):
+                return None
+            if not self._partner_code_is_active(str(row["expires_at"] or ""), str(row["used_at"] or "")):
+                return None
+            conn.execute(
+                "UPDATE partner_login_codes SET used_at = ? WHERE user_id = ?",
+                (now, int(row["user_id"])),
+            )
+            return conn.execute(
+                "SELECT * FROM tg_users WHERE id = ?",
+                (int(row["user_id"]),),
             ).fetchone()
 
     def get_user_by_referral_code(self, referral_code: str) -> sqlite3.Row | None:

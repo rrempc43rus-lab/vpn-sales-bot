@@ -479,6 +479,31 @@ def profile_keyboard(
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+def profile_keyboard(
+    ui: dict[str, str],
+    share_url: str | None,
+    support_contact: str,
+    partner_cabinet_url: str | None = None,
+) -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = []
+    if share_url:
+        rows.append([InlineKeyboardButton(text="🎁 Пригласить друга", url=share_url)])
+    if partner_cabinet_url:
+        rows.append([InlineKeyboardButton(text="💼 ЛК партнера", url=partner_cabinet_url)])
+        rows.append([InlineKeyboardButton(text="🔐 Код для входа", callback_data="partner_code")])
+    support_url = support_contact_url(support_contact)
+    rows.append(
+        [
+            InlineKeyboardButton(text=ui["button_plans"], callback_data="plans"),
+            InlineKeyboardButton(text=ui["button_orders"], callback_data="orders"),
+        ]
+    )
+    if support_url:
+        rows.append([InlineKeyboardButton(text=ui["button_write_support"], url=support_url)])
+    rows.append([InlineKeyboardButton(text="🏠 Меню", callback_data="menu")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 def build_referral_share_url(bot_username: str | None, referral_code: str, ui: dict[str, str]) -> str | None:
     if not bot_username or not referral_code:
         return None
@@ -573,12 +598,7 @@ def build_router(settings: Settings, db: Database, bot: Bot, xui: XuiClient, pla
         share_url = build_referral_share_url(bot_username, str(profile["referral_code"]), current_ui)
         partner_cabinet_url = None
         if int(profile["is_partner"] or 0) == 1:
-            try:
-                partner_token = db.get_or_create_partner_access_token(int(profile["id"]))
-            except ValueError:
-                partner_token = ""
-            if partner_token:
-                partner_cabinet_url = f"{settings.public_base_url.rstrip('/')}/partner/auth/{partner_token}"
+            partner_cabinet_url = f"{settings.public_base_url.rstrip('/')}/partner/login"
         text = profile_text(settings, current_ui, profile, bot_username, support_contact, db.get_loyalty_settings())
         if partner_cabinet_url:
             text = f"{text}\n\nЛК партнера:\n{partner_cabinet_url}"
@@ -609,6 +629,22 @@ def build_router(settings: Settings, db: Database, bot: Bot, xui: XuiClient, pla
     async def profile_handler(callback: CallbackQuery) -> None:
         await ensure_user(callback)
         await show_profile(callback)
+
+    @router.callback_query(F.data == "partner_code")
+    async def partner_code_handler(callback: CallbackQuery) -> None:
+        await ensure_user(callback)
+        profile = db.get_user_profile_by_telegram_id(callback.from_user.id)
+        if profile is None or int(profile["is_partner"] or 0) != 1:
+            await safe_answer(callback, "Партнерский кабинет для этого аккаунта не подключен", show_alert=True)
+            return
+        code = db.generate_partner_login_code(int(profile["id"]))
+        login_url = f"{settings.public_base_url.rstrip('/')}/partner/login"
+        await callback.message.answer(
+            f"Код для входа в ЛК: {code}\n"
+            f"Страница входа: {login_url}\n"
+            "Код действует 10 минут и сработает один раз."
+        )
+        await safe_answer(callback, "Код отправлен в чат")
 
     @router.callback_query(F.data == "about")
     async def about_handler(callback: CallbackQuery) -> None:

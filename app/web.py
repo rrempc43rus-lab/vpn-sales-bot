@@ -314,12 +314,27 @@ def build_router(
                 "brand_tagline": ui_values.get("brand_tagline", ""),
                 "support_contact": support_contact,
                 "support_contact_url": support_contact_url(support_contact),
-                "telegram_login_bot_username": await get_bot_username(),
-                "telegram_login_url": f"{settings.public_base_url.rstrip('/')}/partner/telegram-login",
                 "error_code": str(request.query_params.get("error") or "").strip(),
                 "pending_partner": pending_partner,
             },
         )
+
+    @router.post("/partner/login-code")
+    async def partner_login_code(request: Request, code: str = Form(...)):
+        pending_partner_user_id = request.session.get("partner_login_user_id")
+        expected_user_id: int | None = None
+        if pending_partner_user_id:
+            try:
+                expected_user_id = int(pending_partner_user_id)
+            except (TypeError, ValueError):
+                expected_user_id = None
+                request.session.pop("partner_login_user_id", None)
+        partner = db.consume_partner_login_code(code, expected_user_id=expected_user_id)
+        if partner is None:
+            return RedirectResponse("/partner/login?error=invalid_code", status_code=302)
+        request.session["partner_user_id"] = int(partner["id"])
+        request.session.pop("partner_login_user_id", None)
+        return RedirectResponse("/partner", status_code=302)
 
     @router.get("/partner/auth/{token}")
     async def partner_auth(request: Request, token: str):
@@ -330,50 +345,6 @@ def build_router(
         request.session.pop("partner_user_id", None)
         request.session["partner_login_user_id"] = int(partner["id"])
         return RedirectResponse("/partner/login", status_code=302)
-
-    @router.get("/partner/telegram-login")
-    async def partner_telegram_login(request: Request):
-        payload = {key: value for key, value in request.query_params.items()}
-        verified = verify_telegram_login(payload)
-        if verified is None:
-            request.session.pop("partner_user_id", None)
-            return RedirectResponse("/partner/login?error=invalid_telegram", status_code=302)
-
-        telegram_id = int(verified["id"])
-        db.upsert_user(
-            telegram_id,
-            verified.get("username"),
-            verified.get("first_name"),
-            verified.get("last_name"),
-        )
-
-        pending_partner_user_id = request.session.get("partner_login_user_id")
-        partner_profile = None
-        if pending_partner_user_id:
-            try:
-                pending_id = int(pending_partner_user_id)
-            except (TypeError, ValueError):
-                pending_id = 0
-            if pending_id > 0:
-                partner_profile = db.get_user_profile(pending_id)
-                if (
-                    partner_profile is None
-                    or int(partner_profile["is_partner"] or 0) != 1
-                    or int(partner_profile["telegram_id"] or 0) != telegram_id
-                ):
-                    request.session.pop("partner_login_user_id", None)
-                    request.session.pop("partner_user_id", None)
-                    return RedirectResponse("/partner/login?error=partner_mismatch", status_code=302)
-        else:
-            partner_profile = db.get_user_profile_by_telegram_id(telegram_id)
-            if partner_profile is None or int(partner_profile["is_partner"] or 0) != 1:
-                request.session.pop("partner_user_id", None)
-                return RedirectResponse("/partner/login?error=not_partner", status_code=302)
-
-        assert partner_profile is not None
-        request.session["partner_user_id"] = int(partner_profile["id"])
-        request.session.pop("partner_login_user_id", None)
-        return RedirectResponse("/partner", status_code=302)
 
     @router.get("/partner/logout")
     async def partner_logout(request: Request):

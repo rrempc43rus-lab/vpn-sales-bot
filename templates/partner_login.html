@@ -2,7 +2,7 @@
 {% block content %}
 <section class="card stack">
   <h2>Вход для партнера</h2>
-  <p class="muted">Подтвердите вход через Telegram. Даже если кто-то узнает вашу ссылку, без входа в ваш Telegram-аккаунт он в кабинет не попадет.</p>
+  <p class="muted">Откройте бота, нажмите кнопку получения кода и введите одноразовый код ниже. Код действует недолго и срабатывает только один раз.</p>
   {% if pending_partner %}
   <div class="alert">
     Вход для партнера:
@@ -11,25 +11,18 @@
   {% endif %}
   {% if error_code == "invalid_link" %}
   <div class="alert error">Ссылка входа недействительна или устарела.</div>
-  {% elif error_code == "invalid_telegram" %}
-  <div class="alert error">Telegram не подтвердил авторизацию. Попробуйте еще раз.</div>
-  {% elif error_code == "partner_mismatch" %}
-  <div class="alert error">Этот Telegram-аккаунт не совпадает с партнером, для которого была открыта ссылка.</div>
-  {% elif error_code == "not_partner" %}
-  <div class="alert error">Для этого Telegram-аккаунта партнерский кабинет не подключен.</div>
+  {% elif error_code == "invalid_code" %}
+  <div class="alert error">Код неверный, просрочен или уже использован. Запросите новый код в боте.</div>
   {% endif %}
-  {% if telegram_login_bot_username %}
-  <script async src="https://telegram.org/js/telegram-widget.js?22"
-    data-telegram-login="{{ telegram_login_bot_username }}"
-    data-size="large"
-    data-userpic="false"
-    data-auth-url="{{ telegram_login_url }}"
-    data-request-access="write"></script>
-  {% else %}
-  <div class="alert error">Не удалось загрузить Telegram Login. Проверьте имя бота.</div>
-  {% endif %}
+  <form method="post" action="/partner/login-code" class="stack compact">
+    <label>
+      <span>Код из бота</span>
+      <input type="text" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="Например 482913" required />
+    </label>
+    <button type="submit">Войти по коду</button>
+  </form>
   {% if support_contact_url %}
-  <a href="{{ support_contact_url }}" class="button">Связаться с поддержкой</a>
+  <a href="{{ support_contact_url }}" class="button secondary">Связаться с поддержкой</a>
   {% endif %}
 </section>
 {% endblock %}
