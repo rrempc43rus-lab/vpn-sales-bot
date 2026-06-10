@@ -59,3 +59,20 @@ The callback must be public, HTTPS, and accept JSON `POST` requests.
 - the app uses long polling for Telegram, so no Telegram webhook is required
 - before first delivery, create at least one inbound in `3x-ui` and attach it to a plan
 - duplicate `Platega` callbacks are handled idempotently through stored transaction data
+
+## Backups
+
+The repository includes a ready backup script and systemd timer:
+
+- `deploy/backup/vpn-sales-backup.sh`
+- `deploy/systemd/vpn-sales-backup.service`
+- `deploy/systemd/vpn-sales-backup.timer`
+
+The backup stores:
+
+- a snapshot of `/opt/vpn-sales-bot` without `.venv` and cache folders
+- a consistent SQLite copy of `data/app.db`
+- nginx config for the domain
+- `x-ui` database and `config.json`
+
+Backups are written to `/opt/backups/vpn-sales-bot` and old archives older than `14` days are removed automatically.

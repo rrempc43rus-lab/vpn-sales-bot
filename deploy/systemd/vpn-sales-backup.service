@@ -1,0 +1,7 @@
+[Unit]
+Description=Create backup snapshot for VPN sales bot
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/vpn-sales-backup.sh
