@@ -59,7 +59,7 @@ def load_settings() -> Settings:
         admin_password=_must("ADMIN_PASSWORD"),
         bot_token=_must("BOT_TOKEN"),
         bot_name=os.getenv("BOT_NAME", "My VPN"),
-        support_contact=os.getenv("SUPPORT_CONTACT", "@support"),
+        support_contact=os.getenv("SUPPORT_CONTACT", "@JOLASEKATeam"),
         payment_instructions=os.getenv(
             "PAYMENT_INSTRUCTIONS",
             'Send payment and then press "I paid" in the bot.',
