@@ -281,11 +281,14 @@ def profile_text(
     bonus_balance = int(profile["referral_bonus_balance_rub"] or 0)
     delivered_orders_count = int(profile["delivered_orders_count"] or 0)
     referred_users_count = int(profile["referred_users_count"] or 0)
+    referred_paid_orders_count = int(profile["referred_paid_orders_count"] or 0)
     loyalty_percent = loyalty_settings["loyalty_discount_percent"]
     loyalty_threshold = loyalty_settings["loyalty_orders_threshold"]
     referral_reward_percent = loyalty_settings["referral_reward_percent"]
     referral_discount = loyalty_settings["referral_new_user_discount_percent"]
     next_loyalty_step = max(0, loyalty_threshold - delivered_orders_count)
+    is_partner = int(profile["is_partner"] or 0) == 1
+    partner_name = str(profile["partner_name"] or "").strip()
 
     lines = [
         ui["button_profile"],
@@ -316,6 +319,22 @@ def profile_text(
     if profile["inviter_telegram_id"]:
         inviter = profile["inviter_username"] or profile["inviter_telegram_id"]
         lines.extend(["", f"Вас пригласил: {inviter}"])
+
+    if is_partner:
+        lines.extend(
+            [
+                "",
+                "Партнерка:",
+                "• статус: активен",
+                f"• ставка: {int(profile['partner_commission_percent'] or 0)}%",
+                f"• баланс к выплате: {format_price_rub(int(profile['partner_balance_rub'] or 0))}",
+                f"• всего начислено: {format_price_rub(int(profile['total_partner_earned_rub'] or 0))}",
+                f"• выплачено: {format_price_rub(int(profile['partner_paid_out_rub'] or 0))}",
+                f"• оплаченных заказов по вашей ссылке: {referred_paid_orders_count}",
+            ]
+        )
+        if partner_name:
+            lines.append(f"• метка партнера: {partner_name}")
 
     if bot_username and referral_code:
         referral_link = f"https://t.me/{bot_username}?start=ref_{referral_code}"

@@ -75,6 +75,10 @@ def _coerce_int(value: str | int | None, default: int = 0) -> int:
         return default
 
 
+def _coerce_percent(value: str | int | None, default: int = 0) -> int:
+    return max(0, min(100, _coerce_int(value, default)))
+
+
 TRIAL_PLAN_NAME = "Пробный VPN на 3 дня"
 TRIAL_PLAN_DESCRIPTION = "Бесплатный пробный доступ на 3 дня"
 TRIAL_DURATION_DAYS = 3
@@ -113,6 +117,12 @@ class Database:
                     total_referral_earned_rub INTEGER NOT NULL DEFAULT 0,
                     referral_invites_count INTEGER NOT NULL DEFAULT 0,
                     referral_reward_granted INTEGER NOT NULL DEFAULT 0,
+                    is_partner INTEGER NOT NULL DEFAULT 0,
+                    partner_name TEXT NOT NULL DEFAULT '',
+                    partner_commission_percent INTEGER NOT NULL DEFAULT 0,
+                    partner_balance_rub INTEGER NOT NULL DEFAULT 0,
+                    total_partner_earned_rub INTEGER NOT NULL DEFAULT 0,
+                    partner_paid_out_rub INTEGER NOT NULL DEFAULT 0,
                     created_at TEXT NOT NULL,
                     last_seen_at TEXT NOT NULL
                 );
@@ -150,6 +160,8 @@ class Database:
                     bonus_applied_rub INTEGER NOT NULL DEFAULT 0,
                     applied_discount_percent INTEGER NOT NULL DEFAULT 0,
                     bonus_refunded INTEGER NOT NULL DEFAULT 0,
+                    partner_reward_rub INTEGER NOT NULL DEFAULT 0,
+                    partner_reward_granted INTEGER NOT NULL DEFAULT 0,
                     is_trial INTEGER NOT NULL DEFAULT 0,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
@@ -179,6 +191,12 @@ class Database:
         self._ensure_column(conn, "tg_users", "total_referral_earned_rub", "INTEGER NOT NULL DEFAULT 0")
         self._ensure_column(conn, "tg_users", "referral_invites_count", "INTEGER NOT NULL DEFAULT 0")
         self._ensure_column(conn, "tg_users", "referral_reward_granted", "INTEGER NOT NULL DEFAULT 0")
+        self._ensure_column(conn, "tg_users", "is_partner", "INTEGER NOT NULL DEFAULT 0")
+        self._ensure_column(conn, "tg_users", "partner_name", "TEXT NOT NULL DEFAULT ''")
+        self._ensure_column(conn, "tg_users", "partner_commission_percent", "INTEGER NOT NULL DEFAULT 0")
+        self._ensure_column(conn, "tg_users", "partner_balance_rub", "INTEGER NOT NULL DEFAULT 0")
+        self._ensure_column(conn, "tg_users", "total_partner_earned_rub", "INTEGER NOT NULL DEFAULT 0")
+        self._ensure_column(conn, "tg_users", "partner_paid_out_rub", "INTEGER NOT NULL DEFAULT 0")
 
         self._ensure_column(conn, "plans", "is_trial", "INTEGER NOT NULL DEFAULT 0")
 
@@ -187,6 +205,8 @@ class Database:
         self._ensure_column(conn, "orders", "bonus_applied_rub", "INTEGER NOT NULL DEFAULT 0")
         self._ensure_column(conn, "orders", "applied_discount_percent", "INTEGER NOT NULL DEFAULT 0")
         self._ensure_column(conn, "orders", "bonus_refunded", "INTEGER NOT NULL DEFAULT 0")
+        self._ensure_column(conn, "orders", "partner_reward_rub", "INTEGER NOT NULL DEFAULT 0")
+        self._ensure_column(conn, "orders", "partner_reward_granted", "INTEGER NOT NULL DEFAULT 0")
         self._ensure_column(conn, "orders", "is_trial", "INTEGER NOT NULL DEFAULT 0")
         self._ensure_column(conn, "orders", "payment_provider", "TEXT NOT NULL DEFAULT ''")
         self._ensure_column(conn, "orders", "payment_transaction_id", "TEXT")
@@ -341,6 +361,13 @@ class Database:
                 (telegram_id,),
             ).fetchone()
 
+    def get_user(self, user_id: int) -> sqlite3.Row | None:
+        with self.connect() as conn:
+            return conn.execute(
+                "SELECT * FROM tg_users WHERE id = ?",
+                (user_id,),
+            ).fetchone()
+
     def get_user_by_referral_code(self, referral_code: str) -> sqlite3.Row | None:
         normalized = referral_code.strip().upper()
         with self.connect() as conn:
@@ -373,6 +400,60 @@ class Database:
                 (int(inviter["id"]), int(user["id"])),
             )
             return True
+
+    def save_partner_config(
+        self,
+        user_id: int,
+        *,
+        is_partner: bool,
+        partner_name: str,
+        partner_commission_percent: int,
+    ) -> sqlite3.Row | None:
+        with self.connect() as conn:
+            conn.execute(
+                """
+                UPDATE tg_users
+                SET is_partner = ?,
+                    partner_name = ?,
+                    partner_commission_percent = ?
+                WHERE id = ?
+                """,
+                (
+                    int(is_partner),
+                    partner_name.strip(),
+                    _coerce_percent(partner_commission_percent, 0) if is_partner else 0,
+                    user_id,
+                ),
+            )
+            return conn.execute(
+                "SELECT * FROM tg_users WHERE id = ?",
+                (user_id,),
+            ).fetchone()
+
+    def record_partner_payout(self, user_id: int, amount_rub: int) -> int:
+        amount = max(0, int(amount_rub))
+        if amount <= 0:
+            return 0
+        with self.connect() as conn:
+            user = conn.execute(
+                "SELECT partner_balance_rub FROM tg_users WHERE id = ?",
+                (user_id,),
+            ).fetchone()
+            if user is None:
+                return 0
+            applied = min(amount, max(0, int(user["partner_balance_rub"] or 0)))
+            if applied <= 0:
+                return 0
+            conn.execute(
+                """
+                UPDATE tg_users
+                SET partner_balance_rub = partner_balance_rub - ?,
+                    partner_paid_out_rub = partner_paid_out_rub + ?
+                WHERE id = ?
+                """,
+                (applied, applied, user_id),
+            )
+            return applied
 
     def list_plans(self, active_only: bool = False, *, include_trial: bool = False) -> list[sqlite3.Row]:
         query = "SELECT * FROM plans"
@@ -869,6 +950,10 @@ class Database:
                 return None
 
             delivered_orders = self._count_user_delivered_orders_conn(conn, int(order["tg_user_id"]))
+            inviter = conn.execute(
+                "SELECT telegram_id, referral_bonus_balance_rub, is_partner FROM tg_users WHERE id = ?",
+                (int(order["referred_by_user_id"]),),
+            ).fetchone()
             reward_percent = max(0, self.get_loyalty_settings()["referral_reward_percent"])
             reward_rub = max(0, (int(order["amount_rub"] or 0) * reward_percent) // 100)
             conn.execute(
@@ -880,9 +965,8 @@ class Database:
                 (int(order["tg_user_id"]),),
             )
 
-            if delivered_orders != 1 or reward_rub <= 0:
+            if inviter is None or int(inviter["is_partner"] or 0) == 1 or delivered_orders != 1 or reward_rub <= 0:
                 return None
-
             conn.execute(
                 """
                 UPDATE tg_users
@@ -906,6 +990,85 @@ class Database:
                 "bonus_balance_rub": int(inviter["referral_bonus_balance_rub"]),
                 "invited_telegram_id": int(order["telegram_id"]),
                 "paid_amount_rub": int(order["amount_rub"] or 0),
+            }
+
+    def apply_partner_reward(self, order_id: int) -> dict[str, int | str] | None:
+        with self.connect() as conn:
+            order = conn.execute(
+                """
+                SELECT o.*,
+                       u.telegram_id,
+                       u.referred_by_user_id,
+                       inviter.telegram_id AS partner_telegram_id,
+                       inviter.username AS partner_username,
+                       inviter.first_name AS partner_first_name,
+                       inviter.is_partner AS inviter_is_partner,
+                       inviter.partner_name,
+                       inviter.partner_commission_percent
+                FROM orders o
+                JOIN tg_users u ON u.id = o.tg_user_id
+                LEFT JOIN tg_users inviter ON inviter.id = u.referred_by_user_id
+                WHERE o.id = ?
+                """,
+                (order_id,),
+            ).fetchone()
+            if order is None or str(order["status"]) != "delivered":
+                return None
+            if int(order["is_trial"] or 0) == 1 or int(order["amount_rub"] or 0) <= 0:
+                return None
+            if not order["referred_by_user_id"] or int(order["partner_reward_granted"] or 0) == 1:
+                return None
+
+            reward_percent = _coerce_percent(order["partner_commission_percent"], 0)
+            inviter_is_partner = int(order["inviter_is_partner"] or 0) == 1
+            reward_rub = 0
+            if inviter_is_partner and reward_percent > 0:
+                reward_rub = max(0, (int(order["amount_rub"] or 0) * reward_percent) // 100)
+
+            conn.execute(
+                """
+                UPDATE orders
+                SET partner_reward_rub = ?, partner_reward_granted = 1
+                WHERE id = ?
+                """,
+                (reward_rub, order_id),
+            )
+
+            if not inviter_is_partner or reward_rub <= 0:
+                return None
+
+            conn.execute(
+                """
+                UPDATE tg_users
+                SET partner_balance_rub = partner_balance_rub + ?,
+                    total_partner_earned_rub = total_partner_earned_rub + ?
+                WHERE id = ?
+                """,
+                (reward_rub, reward_rub, int(order["referred_by_user_id"])),
+            )
+            partner = conn.execute(
+                """
+                SELECT telegram_id, partner_balance_rub, total_partner_earned_rub,
+                       partner_name, partner_commission_percent
+                FROM tg_users
+                WHERE id = ?
+                """,
+                (int(order["referred_by_user_id"]),),
+            ).fetchone()
+            if partner is None:
+                return None
+            partner_name = str(partner["partner_name"] or "").strip()
+            if not partner_name:
+                partner_name = str(order["partner_username"] or order["partner_first_name"] or order["partner_telegram_id"] or "")
+            return {
+                "partner_telegram_id": int(partner["telegram_id"]),
+                "reward_rub": reward_rub,
+                "reward_percent": int(partner["partner_commission_percent"] or 0),
+                "partner_balance_rub": int(partner["partner_balance_rub"] or 0),
+                "total_partner_earned_rub": int(partner["total_partner_earned_rub"] or 0),
+                "customer_telegram_id": int(order["telegram_id"]),
+                "paid_amount_rub": int(order["amount_rub"] or 0),
+                "partner_name": partner_name,
             }
 
     def get_order(self, order_id: int) -> sqlite3.Row | None:
@@ -998,7 +1161,23 @@ class Database:
                            SELECT COUNT(*)
                            FROM tg_users child
                            WHERE child.referred_by_user_id = u.id
-                       ) AS referred_users_count
+                       ) AS referred_users_count,
+                       (
+                           SELECT COUNT(*)
+                           FROM orders o
+                           JOIN tg_users child ON child.id = o.tg_user_id
+                           WHERE child.referred_by_user_id = u.id
+                             AND o.status = 'delivered'
+                             AND COALESCE(o.is_trial, 0) = 0
+                       ) AS referred_paid_orders_count,
+                       (
+                           SELECT COALESCE(SUM(o.amount_rub), 0)
+                           FROM orders o
+                           JOIN tg_users child ON child.id = o.tg_user_id
+                           WHERE child.referred_by_user_id = u.id
+                             AND o.status = 'delivered'
+                             AND COALESCE(o.is_trial, 0) = 0
+                       ) AS referred_paid_revenue_rub
                 FROM tg_users u
                 LEFT JOIN tg_users inviter ON inviter.id = u.referred_by_user_id
                 ORDER BY u.id DESC
@@ -1028,7 +1207,23 @@ class Database:
                            SELECT COUNT(*)
                            FROM tg_users child
                            WHERE child.referred_by_user_id = u.id
-                       ) AS referred_users_count
+                       ) AS referred_users_count,
+                       (
+                           SELECT COUNT(*)
+                           FROM orders o
+                           JOIN tg_users child ON child.id = o.tg_user_id
+                           WHERE child.referred_by_user_id = u.id
+                             AND o.status = 'delivered'
+                             AND COALESCE(o.is_trial, 0) = 0
+                       ) AS referred_paid_orders_count,
+                       (
+                           SELECT COALESCE(SUM(o.amount_rub), 0)
+                           FROM orders o
+                           JOIN tg_users child ON child.id = o.tg_user_id
+                           WHERE child.referred_by_user_id = u.id
+                             AND o.status = 'delivered'
+                             AND COALESCE(o.is_trial, 0) = 0
+                       ) AS referred_paid_revenue_rub
                 FROM tg_users u
                 LEFT JOIN tg_users inviter ON inviter.id = u.referred_by_user_id
                 WHERE u.telegram_id = ?

@@ -461,6 +461,12 @@ td {
   border-top: 1px solid #eee3cf;
 }
 
+.form-box {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #eee3cf;
+}
+
 @media (max-width: 920px) {
   .cards,
   .two,

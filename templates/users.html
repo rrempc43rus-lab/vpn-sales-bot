@@ -11,6 +11,8 @@
         <th>Заказы</th>
         <th>Рефералка</th>
         <th>Бонусы</th>
+        <th>Партнерка</th>
+        <th>Действия</th>
         <th>Последняя активность</th>
       </tr>
     </thead>
@@ -28,15 +30,49 @@
           <div>Код: <span class="mono">{{ user.referral_code or "-" }}</span></div>
           <div class="muted">Пригласил: {{ user.inviter_username or user.inviter_telegram_id or "-" }}</div>
           <div class="muted">Привел: {{ user.referred_users_count }}</div>
+          <div class="muted">Оплат: {{ user.referred_paid_orders_count }} / {{ user.referred_paid_revenue_rub }} RUB</div>
         </td>
         <td>
           <div>{{ user.referral_bonus_balance_rub }} RUB</div>
           <div class="muted">Всего начислено: {{ user.total_referral_earned_rub }} RUB</div>
         </td>
+        <td>
+          <div><strong>{% if user.is_partner %}Активна{% else %}Выключена{% endif %}</strong></div>
+          <div class="muted">Ставка: {{ user.partner_commission_percent }}%</div>
+          <div class="muted">Баланс: {{ user.partner_balance_rub }} RUB</div>
+          <div class="muted">Всего начислено: {{ user.total_partner_earned_rub }} RUB</div>
+          <div class="muted">Выплачено: {{ user.partner_paid_out_rub }} RUB</div>
+        </td>
+        <td>
+          <form method="post" action="/admin/users/{{ user.id }}/partner" class="stack compact">
+            <label class="checkbox">
+              <input type="checkbox" name="is_partner" {% if user.is_partner %}checked{% endif %} />
+              <span>Партнер активен</span>
+            </label>
+            <label>
+              <span>Метка</span>
+              <input type="text" name="partner_name" value="{{ user.partner_name or '' }}" placeholder="Канал / блогер / медийка" />
+            </label>
+            <label>
+              <span>Комиссия, %</span>
+              <input type="number" min="0" max="100" name="partner_commission_percent" value="{{ user.partner_commission_percent or 0 }}" />
+            </label>
+            <button type="submit">Сохранить</button>
+          </form>
+          {% if user.is_partner and user.partner_balance_rub|int > 0 %}
+          <form method="post" action="/admin/users/{{ user.id }}/partner-payout" class="stack compact form-box">
+            <label>
+              <span>Отметить выплату, RUB</span>
+              <input type="number" min="1" max="{{ user.partner_balance_rub }}" name="amount_rub" value="{{ user.partner_balance_rub }}" />
+            </label>
+            <button type="submit" class="secondary">Списать с баланса</button>
+          </form>
+          {% endif %}
+        </td>
         <td>{{ user.last_seen_at }}</td>
       </tr>
       {% else %}
-      <tr><td colspan="7">Пользователей Telegram пока нет.</td></tr>
+      <tr><td colspan="9">Пользователей Telegram пока нет.</td></tr>
       {% endfor %}
     </tbody>
   </table>

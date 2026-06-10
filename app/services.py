@@ -33,6 +33,23 @@ async def notify_referral_reward(bot: Bot, reward: dict[str, int | str] | None) 
     )
 
 
+async def notify_partner_reward(bot: Bot, reward: dict[str, int | str] | None) -> None:
+    if reward is None:
+        return
+    partner_name = str(reward["partner_name"] or "").strip()
+    title = partner_name or "Партнерская программа"
+    await bot.send_message(
+        int(reward["partner_telegram_id"]),
+        (
+            f"💸 {title}\n\n"
+            f"Начислено: {reward['reward_rub']} RUB "
+            f"({reward['reward_percent']}% от оплаты {reward['paid_amount_rub']} RUB).\n"
+            f"Клиент: {reward['customer_telegram_id']}\n"
+            f"Баланс к выплате: {reward['partner_balance_rub']} RUB."
+        ),
+    )
+
+
 async def deliver_order(
     db: Database,
     xui: XuiClient,
@@ -96,6 +113,7 @@ async def handle_successful_order_payment(
         return None
 
     await send_delivery_message(bot, settings, db, int(completed["telegram_id"]), completed)
+    await notify_partner_reward(bot, db.apply_partner_reward(order_id))
     await notify_referral_reward(bot, db.apply_referral_reward(order_id))
     await notify_admin(
         bot,

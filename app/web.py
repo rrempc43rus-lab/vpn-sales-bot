@@ -331,6 +331,8 @@ def build_router(
             return redirect
         live_inbounds = await xui.list_inbounds()
         users = db.list_users()
+        partners = [user for user in users if int(user["is_partner"] or 0) == 1]
+        top_partners = sorted(partners, key=lambda user: int(user["total_partner_earned_rub"] or 0), reverse=True)[:8]
         stats = {
             "plans": len(db.list_plans()),
             "orders": len(db.list_orders()),
@@ -338,6 +340,9 @@ def build_router(
             "inbounds": len(live_inbounds),
             "referrals": sum(int(user["referred_users_count"] or 0) for user in users),
             "bonus_pool_rub": sum(int(user["referral_bonus_balance_rub"] or 0) for user in users),
+            "partners": len(partners),
+            "partner_balance_rub": sum(int(user["partner_balance_rub"] or 0) for user in partners),
+            "partner_earned_rub": sum(int(user["total_partner_earned_rub"] or 0) for user in partners),
         }
         return templates.TemplateResponse(
             "dashboard.html",
@@ -349,6 +354,7 @@ def build_router(
                 "inbounds": live_inbounds,
                 "settings": db.get_settings(),
                 "loyalty": db.get_loyalty_settings(),
+                "partners": top_partners,
                 "bot_name": settings.bot_name,
                 "status_label": status_label,
                 "payment_callback_url": payment_callback_url,
@@ -534,6 +540,33 @@ def build_router(
             "users.html",
             {"request": request, "users": db.list_users(), "bot_name": settings.bot_name},
         )
+
+    @router.post("/admin/users/{user_id}/partner")
+    async def save_partner(
+        request: Request,
+        user_id: int,
+        partner_name: str = Form(""),
+        partner_commission_percent: int = Form(0),
+        is_partner: str | None = Form(default=None),
+    ):
+        redirect = require_admin(request, settings)
+        if redirect:
+            return redirect
+        db.save_partner_config(
+            user_id,
+            is_partner=is_partner == "on",
+            partner_name=partner_name,
+            partner_commission_percent=partner_commission_percent,
+        )
+        return RedirectResponse("/admin/users", status_code=302)
+
+    @router.post("/admin/users/{user_id}/partner-payout")
+    async def partner_payout(request: Request, user_id: int, amount_rub: int = Form(...)):
+        redirect = require_admin(request, settings)
+        if redirect:
+            return redirect
+        db.record_partner_payout(user_id, amount_rub)
+        return RedirectResponse("/admin/users", status_code=302)
 
     @router.get("/admin/settings", response_class=HTMLResponse)
     async def settings_page(request: Request):

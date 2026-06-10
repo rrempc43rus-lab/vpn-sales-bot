@@ -25,6 +25,18 @@
     <span>Бонусный пул</span>
     <strong>{{ stats.bonus_pool_rub }} RUB</strong>
   </article>
+  <article class="card stat">
+    <span>Партнеры</span>
+    <strong>{{ stats.partners }}</strong>
+  </article>
+  <article class="card stat">
+    <span>Партнерский баланс</span>
+    <strong>{{ stats.partner_balance_rub }} RUB</strong>
+  </article>
+  <article class="card stat">
+    <span>Начислено партнерам</span>
+    <strong>{{ stats.partner_earned_rub }} RUB</strong>
+  </article>
 </section>
 
 <section class="grid two">
@@ -95,5 +107,32 @@
       <div><strong>Списание бонусов:</strong> до {{ loyalty.max_bonus_writeoff_percent }}% от заказа</div>
     </div>
   </article>
+</section>
+<section class="card">
+  <h2>Партнеры</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Партнер</th>
+        <th>Ставка</th>
+        <th>Клиенты</th>
+        <th>Оплаты</th>
+        <th>Баланс</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for user in partners %}
+      <tr>
+        <td>{{ user.partner_name or user.username or user.telegram_id }}</td>
+        <td>{{ user.partner_commission_percent }}%</td>
+        <td>{{ user.referred_users_count }}</td>
+        <td>{{ user.referred_paid_orders_count }} / {{ user.referred_paid_revenue_rub }} RUB</td>
+        <td>{{ user.partner_balance_rub }} RUB / {{ user.total_partner_earned_rub }} RUB</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5">Партнеров пока нет.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
 </section>
 {% endblock %}
