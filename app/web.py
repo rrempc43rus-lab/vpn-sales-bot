@@ -588,6 +588,7 @@ def build_router(
                 "request": request,
                 "withdraw_requests": withdraw_requests,
                 "stats": stats,
+                "result": str(request.query_params.get("result") or "").strip(),
                 "bot_name": settings.bot_name,
                 "withdraw_status_label": withdraw_status_label,
             },
@@ -614,7 +615,7 @@ def build_router(
             raise HTTPException(status_code=400, detail="Unsupported action")
 
         if row is None:
-            return RedirectResponse("/admin/withdraws", status_code=302)
+            return RedirectResponse("/admin/withdraws?result=error", status_code=302)
 
         if action == "paid":
             partner_label = str(row["partner_name"] or row["username"] or row["first_name"] or row["telegram_id"])
@@ -623,7 +624,7 @@ def build_router(
                 settings.admin_telegram_id,
                 f"✅ Выплата отмечена: {partner_label} ({row['telegram_id']}) — {row['amount_rub']} RUB",
             )
-        return RedirectResponse("/admin/withdraws", status_code=302)
+        return RedirectResponse(f"/admin/withdraws?result={action}", status_code=302)
 
     @router.get("/admin/plans", response_class=HTMLResponse)
     async def plans_page(request: Request):

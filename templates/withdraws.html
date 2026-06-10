@@ -16,6 +16,15 @@
 </section>
 
 <section class="card">
+  {% if result == "paid" %}
+  <div class="alert">Заявка отмечена как выплаченная.</div>
+  {% elif result == "rejected" %}
+  <div class="alert">Заявка отклонена, деньги возвращены на баланс партнера.</div>
+  {% elif result == "pending" %}
+  <div class="alert">Заявка снова переведена в ожидание.</div>
+  {% elif result == "error" %}
+  <div class="alert error">Не удалось обработать заявку. Проверьте ее текущий статус и баланс партнера.</div>
+  {% endif %}
   <h2>Заявки на вывод партнеров</h2>
   <table>
     <thead>

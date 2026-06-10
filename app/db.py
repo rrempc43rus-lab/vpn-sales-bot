@@ -217,6 +217,7 @@ class Database:
                     user_id INTEGER NOT NULL,
                     amount_rub INTEGER NOT NULL,
                     payout_details TEXT NOT NULL DEFAULT '',
+                    balance_reserved INTEGER NOT NULL DEFAULT 0,
                     status TEXT NOT NULL DEFAULT 'pending',
                     created_at TEXT NOT NULL,
                     processed_at TEXT,
@@ -261,6 +262,7 @@ class Database:
         self._ensure_column(conn, "orders", "payment_currency", "TEXT NOT NULL DEFAULT 'RUB'")
         self._ensure_column(conn, "orders", "payment_raw_payload", "TEXT NOT NULL DEFAULT ''")
         self._ensure_column(conn, "partner_withdraw_requests", "payout_details", "TEXT NOT NULL DEFAULT ''")
+        self._ensure_column(conn, "partner_withdraw_requests", "balance_reserved", "INTEGER NOT NULL DEFAULT 0")
 
         conn.execute(
             """
@@ -675,7 +677,7 @@ class Database:
         with self.connect() as conn:
             request_row = conn.execute(
                 """
-                SELECT r.id, r.user_id, r.amount_rub, r.status, r.payout_details,
+                SELECT r.id, r.user_id, r.amount_rub, r.status, r.payout_details, r.balance_reserved,
                        u.telegram_id, u.username, u.first_name, u.partner_name
                 FROM partner_withdraw_requests r
                 JOIN tg_users u ON u.id = r.user_id
@@ -686,31 +688,42 @@ class Database:
             if request_row is None or str(request_row["status"]) != "pending":
                 return None
 
-            available_balance = conn.execute(
-                "SELECT partner_balance_rub FROM tg_users WHERE id = ?",
-                (int(request_row["user_id"]),),
-            ).fetchone()
-            if available_balance is None:
-                return None
-
-            applied = min(
-                max(0, int(request_row["amount_rub"] or 0)),
-                max(0, int(available_balance["partner_balance_rub"] or 0)),
-            )
+            applied = max(0, int(request_row["amount_rub"] or 0))
+            if int(request_row["balance_reserved"] or 0) == 1:
+                conn.execute(
+                    """
+                    UPDATE tg_users
+                    SET partner_paid_out_rub = partner_paid_out_rub + ?
+                    WHERE id = ?
+                    """,
+                    (applied, int(request_row["user_id"])),
+                )
+            else:
+                available_balance = conn.execute(
+                    "SELECT partner_balance_rub FROM tg_users WHERE id = ?",
+                    (int(request_row["user_id"]),),
+                ).fetchone()
+                if available_balance is None:
+                    return None
+                applied = min(
+                    applied,
+                    max(0, int(available_balance["partner_balance_rub"] or 0)),
+                )
+                if applied > 0:
+                    conn.execute(
+                        """
+                        UPDATE tg_users
+                        SET partner_balance_rub = partner_balance_rub - ?,
+                            partner_paid_out_rub = partner_paid_out_rub + ?
+                        WHERE id = ?
+                        """,
+                        (applied, applied, int(request_row["user_id"])),
+                    )
             if applied <= 0:
                 return None
 
             processed_at = utc_now_iso()
             payout_note = note.strip() or f"Withdraw request #{request_id}"
-            conn.execute(
-                """
-                UPDATE tg_users
-                SET partner_balance_rub = partner_balance_rub - ?,
-                    partner_paid_out_rub = partner_paid_out_rub + ?
-                WHERE id = ?
-                """,
-                (applied, applied, int(request_row["user_id"])),
-            )
             conn.execute(
                 """
                 INSERT INTO partner_payouts(user_id, amount_rub, note, created_at)
@@ -723,6 +736,7 @@ class Database:
                 UPDATE partner_withdraw_requests
                 SET status = 'paid',
                     amount_rub = ?,
+                    balance_reserved = 0,
                     processed_at = ?,
                     note = ?
                 WHERE id = ?
@@ -731,7 +745,7 @@ class Database:
             )
             return conn.execute(
                 """
-                SELECT r.id, r.user_id, r.amount_rub, r.payout_details, r.status, r.created_at, r.processed_at, r.note,
+                SELECT r.id, r.user_id, r.amount_rub, r.payout_details, r.balance_reserved, r.status, r.created_at, r.processed_at, r.note,
                        u.telegram_id, u.username, u.first_name, u.partner_name
                 FROM partner_withdraw_requests r
                 JOIN tg_users u ON u.id = r.user_id
@@ -747,7 +761,7 @@ class Database:
         with self.connect() as conn:
             row = conn.execute(
                 """
-                SELECT r.id, r.user_id, r.amount_rub, r.payout_details, r.status, r.created_at, r.processed_at, r.note,
+                SELECT r.id, r.user_id, r.amount_rub, r.payout_details, r.balance_reserved, r.status, r.created_at, r.processed_at, r.note,
                        u.telegram_id, u.username, u.first_name, u.partner_name
                 FROM partner_withdraw_requests r
                 JOIN tg_users u ON u.id = r.user_id
@@ -762,18 +776,46 @@ class Database:
                 return None
             if normalized == "pending" and current_status != "rejected":
                 return None
+            amount_rub = max(0, int(row["amount_rub"] or 0))
+            reserved = int(row["balance_reserved"] or 0) == 1
+            if normalized == "rejected" and current_status == "pending" and reserved and amount_rub > 0:
+                conn.execute(
+                    """
+                    UPDATE tg_users
+                    SET partner_balance_rub = partner_balance_rub + ?
+                    WHERE id = ?
+                    """,
+                    (amount_rub, int(row["user_id"])),
+                )
+                reserved = False
+            if normalized == "pending" and current_status == "rejected" and not reserved and amount_rub > 0:
+                user = conn.execute(
+                    "SELECT partner_balance_rub FROM tg_users WHERE id = ?",
+                    (int(row["user_id"]),),
+                ).fetchone()
+                if user is None or int(user["partner_balance_rub"] or 0) < amount_rub:
+                    return None
+                conn.execute(
+                    """
+                    UPDATE tg_users
+                    SET partner_balance_rub = partner_balance_rub - ?
+                    WHERE id = ?
+                    """,
+                    (amount_rub, int(row["user_id"])),
+                )
+                reserved = True
             processed_at = utc_now_iso() if normalized != "pending" else None
             conn.execute(
                 """
                 UPDATE partner_withdraw_requests
-                SET status = ?, processed_at = ?, note = ?
+                SET status = ?, balance_reserved = ?, processed_at = ?, note = ?
                 WHERE id = ?
                 """,
-                (normalized, processed_at, note.strip(), request_id),
+                (normalized, 1 if reserved else 0, processed_at, note.strip(), request_id),
             )
             return conn.execute(
                 """
-                SELECT r.id, r.user_id, r.amount_rub, r.payout_details, r.status, r.created_at, r.processed_at, r.note,
+                SELECT r.id, r.user_id, r.amount_rub, r.payout_details, r.balance_reserved, r.status, r.created_at, r.processed_at, r.note,
                        u.telegram_id, u.username, u.first_name, u.partner_name
                 FROM partner_withdraw_requests r
                 JOIN tg_users u ON u.id = r.user_id
@@ -1634,15 +1676,25 @@ class Database:
             created_at = utc_now_iso()
             conn.execute(
                 """
-                INSERT INTO partner_withdraw_requests(user_id, amount_rub, payout_details, status, created_at, processed_at, note)
-                VALUES (?, ?, ?, 'pending', ?, NULL, '')
+                UPDATE tg_users
+                SET partner_balance_rub = partner_balance_rub - ?
+                WHERE id = ?
+                """,
+                (balance_rub, partner_user_id),
+            )
+            conn.execute(
+                """
+                INSERT INTO partner_withdraw_requests(
+                    user_id, amount_rub, payout_details, balance_reserved, status, created_at, processed_at, note
+                )
+                VALUES (?, ?, ?, 1, 'pending', ?, NULL, '')
                 """,
                 (partner_user_id, balance_rub, details, created_at),
             )
             request_id = int(conn.execute("SELECT last_insert_rowid()").fetchone()[0])
             row = conn.execute(
                 """
-                SELECT r.id, r.amount_rub, r.payout_details, r.status, r.created_at, r.processed_at, r.note,
+                SELECT r.id, r.amount_rub, r.payout_details, r.balance_reserved, r.status, r.created_at, r.processed_at, r.note,
                        u.telegram_id, u.username, u.first_name, u.partner_name
                 FROM partner_withdraw_requests r
                 JOIN tg_users u ON u.id = r.user_id
