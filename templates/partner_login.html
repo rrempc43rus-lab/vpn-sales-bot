@@ -2,7 +2,32 @@
 {% block content %}
 <section class="card stack">
   <h2>Вход для партнера</h2>
-  <p class="muted">Откройте этот кабинет по кнопке из Telegram-бота. Там для вас создается безопасная ссылка входа.</p>
+  <p class="muted">Подтвердите вход через Telegram. Даже если кто-то узнает вашу ссылку, без входа в ваш Telegram-аккаунт он в кабинет не попадет.</p>
+  {% if pending_partner %}
+  <div class="alert">
+    Вход для партнера:
+    <strong>{{ pending_partner.partner_name or pending_partner.username or pending_partner.telegram_id }}</strong>
+  </div>
+  {% endif %}
+  {% if error_code == "invalid_link" %}
+  <div class="alert error">Ссылка входа недействительна или устарела.</div>
+  {% elif error_code == "invalid_telegram" %}
+  <div class="alert error">Telegram не подтвердил авторизацию. Попробуйте еще раз.</div>
+  {% elif error_code == "partner_mismatch" %}
+  <div class="alert error">Этот Telegram-аккаунт не совпадает с партнером, для которого была открыта ссылка.</div>
+  {% elif error_code == "not_partner" %}
+  <div class="alert error">Для этого Telegram-аккаунта партнерский кабинет не подключен.</div>
+  {% endif %}
+  {% if telegram_login_bot_username %}
+  <script async src="https://telegram.org/js/telegram-widget.js?22"
+    data-telegram-login="{{ telegram_login_bot_username }}"
+    data-size="large"
+    data-userpic="false"
+    data-auth-url="{{ telegram_login_url }}"
+    data-request-access="write"></script>
+  {% else %}
+  <div class="alert error">Не удалось загрузить Telegram Login. Проверьте имя бота.</div>
+  {% endif %}
   {% if support_contact_url %}
   <a href="{{ support_contact_url }}" class="button">Связаться с поддержкой</a>
   {% endif %}

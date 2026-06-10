@@ -442,6 +442,8 @@ def order_keyboard(settings: Settings, order, support_contact: str, ui: dict[str
         rows.append([InlineKeyboardButton(text="💼 ЛК партнера", url=partner_cabinet_url)])
     if partner_cabinet_url:
         rows.append([InlineKeyboardButton(text="💼 ЛК партнера", url=partner_cabinet_url)])
+    if partner_cabinet_url:
+        rows.append([InlineKeyboardButton(text="💼 ЛК партнера", url=partner_cabinet_url)])
     support_url = support_contact_url(support_contact)
     if support_url:
         rows.append([InlineKeyboardButton(text=ui["button_write_support"], url=support_url)])
