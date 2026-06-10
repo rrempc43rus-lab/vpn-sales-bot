@@ -1,0 +1,284 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="grid settings-layout">
+  <article class="card">
+    <div class="section-heading">
+      <div>
+        <h2>Настройка интерфейса бота</h2>
+        <p class="muted">
+          Здесь можно менять тексты, подписи кнопок, картинки и правила программы лояльности без правки кода.
+        </p>
+      </div>
+    </div>
+
+    <form method="post" action="/admin/settings" class="stack" enctype="multipart/form-data">
+      <section class="stack section-block">
+        <div class="section-heading">
+          <div>
+            <h3>Бренд и стартовый экран</h3>
+            <p class="muted">Эти поля влияют на первое впечатление от бота.</p>
+          </div>
+        </div>
+
+        <div class="field-grid">
+          <label>
+            <span>Название бренда</span>
+            <input type="text" name="brand_name" value="{{ ui_values.get('brand_name', '') }}" required />
+          </label>
+          <label>
+            <span>Короткий слоган</span>
+            <input type="text" name="brand_tagline" value="{{ ui_values.get('brand_tagline', '') }}" />
+          </label>
+        </div>
+
+        <label>
+          <span>Приветственный текст</span>
+          <textarea name="welcome_text" rows="4">{{ ui_values.get('welcome_text', '') }}</textarea>
+        </label>
+
+        <label>
+          <span>Блок преимуществ</span>
+          <textarea name="features_text" rows="6">{{ ui_values.get('features_text', '') }}</textarea>
+        </label>
+
+        <div class="field-grid">
+          <div class="media-card">
+            <div class="media-card-header">
+              <span>Стартовый баннер</span>
+              <span class="muted">Отправляется командой /start</span>
+            </div>
+            {% if hero_image_url %}
+            <img src="{{ hero_image_url }}" alt="Стартовый баннер" class="media-preview" />
+            {% else %}
+            <div class="media-empty">Баннер пока не загружен</div>
+            {% endif %}
+            <input type="file" name="hero_image" accept="image/*" />
+            <label class="checkbox">
+              <input type="checkbox" name="clear_hero_image" />
+              <span>Сбросить на стандартный баннер</span>
+            </label>
+          </div>
+
+          <div class="media-card">
+            <div class="media-card-header">
+              <span>Картинка выдачи подписки</span>
+              <span class="muted">Показывается вместе с готовой подпиской</span>
+            </div>
+            {% if delivery_image_url %}
+            <img src="{{ delivery_image_url }}" alt="Картинка выдачи" class="media-preview" />
+            {% else %}
+            <div class="media-empty">Дополнительная картинка не загружена</div>
+            {% endif %}
+            <input type="file" name="delivery_image" accept="image/*" />
+            <label class="checkbox">
+              <input type="checkbox" name="clear_delivery_image" />
+              <span>Убрать картинку выдачи</span>
+            </label>
+          </div>
+        </div>
+      </section>
+
+      <section class="stack section-block">
+        <div class="section-heading">
+          <div>
+            <h3>Контент и подсказки</h3>
+            <p class="muted">Эти тексты используются в основных разделах бота.</p>
+          </div>
+        </div>
+
+        <label>
+          <span>Текст "Почему мы"</span>
+          <textarea name="about_text" rows="6">{{ ui_values.get('about_text', '') }}</textarea>
+        </label>
+
+        <label>
+          <span>Инструкция по подключению</span>
+          <textarea name="setup_text" rows="6">{{ ui_values.get('setup_text', '') }}</textarea>
+        </label>
+
+        <label>
+          <span>Вступление перед тарифами</span>
+          <textarea name="plans_intro" rows="6">{{ ui_values.get('plans_intro', '') }}</textarea>
+        </label>
+
+        <label>
+          <span>Текст поддержки</span>
+          <textarea name="support_text" rows="6">{{ ui_values.get('support_text', '') }}</textarea>
+        </label>
+
+        <label>
+          <span>Текст после выдачи подписки</span>
+          <textarea name="delivery_text" rows="6">{{ ui_values.get('delivery_text', '') }}</textarea>
+        </label>
+      </section>
+
+      <section class="stack section-block">
+        <div class="section-heading">
+          <div>
+            <h3>Кнопки бота</h3>
+            <p class="muted">Можно переименовать основные кнопки без правки логики.</p>
+          </div>
+        </div>
+
+        <div class="field-grid three">
+          <label>
+            <span>Кнопка покупки</span>
+            <input type="text" name="button_buy" value="{{ ui_values.get('button_buy', '') }}" />
+          </label>
+          <label>
+            <span>Кнопка тарифов</span>
+            <input type="text" name="button_plans" value="{{ ui_values.get('button_plans', '') }}" />
+          </label>
+          <label>
+            <span>Кнопка подписок</span>
+            <input type="text" name="button_orders" value="{{ ui_values.get('button_orders', '') }}" />
+          </label>
+          <label>
+            <span>Кнопка профиля</span>
+            <input type="text" name="button_profile" value="{{ ui_values.get('button_profile', '') }}" />
+          </label>
+          <label>
+            <span>Кнопка "Почему мы"</span>
+            <input type="text" name="button_about" value="{{ ui_values.get('button_about', '') }}" />
+          </label>
+          <label>
+            <span>Кнопка подключения</span>
+            <input type="text" name="button_setup" value="{{ ui_values.get('button_setup', '') }}" />
+          </label>
+          <label>
+            <span>Кнопка поддержки</span>
+            <input type="text" name="button_support" value="{{ ui_values.get('button_support', '') }}" />
+          </label>
+          <label>
+            <span>Кнопка открытия подписки</span>
+            <input type="text" name="button_open_subscription" value="{{ ui_values.get('button_open_subscription', '') }}" />
+          </label>
+          <label>
+            <span>Кнопка короткой ссылки</span>
+            <input type="text" name="button_short_link" value="{{ ui_values.get('button_short_link', '') }}" />
+          </label>
+          <label>
+            <span>Кнопка связи с поддержкой</span>
+            <input type="text" name="button_write_support" value="{{ ui_values.get('button_write_support', '') }}" />
+          </label>
+          <label>
+            <span>Кнопка политики</span>
+            <input type="text" name="button_privacy_policy" value="{{ ui_values.get('button_privacy_policy', '') }}" />
+          </label>
+          <label>
+            <span>Кнопка соглашения</span>
+            <input type="text" name="button_user_agreement" value="{{ ui_values.get('button_user_agreement', '') }}" />
+          </label>
+        </div>
+      </section>
+
+      <section class="stack section-block">
+        <div class="section-heading">
+          <div>
+            <h3>Программа лояльности</h3>
+            <p class="muted">Здесь настраиваются реферальные бонусы, скидки и лимит списания бонусов.</p>
+          </div>
+        </div>
+
+        <div class="field-grid three">
+          <label>
+            <span>Процент пригласившему, %</span>
+            <input type="number" min="0" max="100" name="referral_reward_percent" value="{{ ui_values.get('referral_reward_percent', '15') }}" />
+          </label>
+          <label>
+            <span>Скидка другу, %</span>
+            <input type="number" min="0" max="100" name="referral_new_user_discount_percent" value="{{ ui_values.get('referral_new_user_discount_percent', '10') }}" />
+          </label>
+          <label>
+            <span>Персональная скидка, %</span>
+            <input type="number" min="0" max="100" name="loyalty_discount_percent" value="{{ ui_values.get('loyalty_discount_percent', '7') }}" />
+          </label>
+          <label>
+            <span>Заказов до скидки</span>
+            <input type="number" min="0" name="loyalty_orders_threshold" value="{{ ui_values.get('loyalty_orders_threshold', '3') }}" />
+          </label>
+          <label>
+            <span>Макс. списание бонусов, %</span>
+            <input type="number" min="0" max="100" name="max_bonus_writeoff_percent" value="{{ ui_values.get('max_bonus_writeoff_percent', '30') }}" />
+          </label>
+        </div>
+      </section>
+
+      <section class="stack section-block">
+        <div class="section-heading">
+          <div>
+            <h3>Продажи и поддержка</h3>
+            <p class="muted">Эти настройки используются при оплате и связи с клиентом.</p>
+          </div>
+        </div>
+
+        <label>
+          <span>Контакт поддержки</span>
+          <input type="text" name="support_contact" value="{{ ui_values.get('support_contact', '') }}" required />
+        </label>
+
+        <label>
+          <span>Инструкция по оплате</span>
+          <textarea name="payment_instructions" rows="6" required>{{ ui_values.get('payment_instructions', '') }}</textarea>
+        </label>
+      </section>
+
+      <div class="actions">
+        <button type="submit">Сохранить интерфейс</button>
+        <a href="/admin" class="button secondary">Назад в админку</a>
+      </div>
+    </form>
+  </article>
+
+  <aside class="stack">
+    <article class="card">
+      <div class="section-heading">
+        <div>
+          <h2>Предпросмотр</h2>
+          <p class="muted">Так примерно выглядит главный экран бота для клиента.</p>
+        </div>
+      </div>
+
+      <div class="preview-phone">
+        {% if hero_image_url %}
+        <img src="{{ hero_image_url }}" alt="Превью баннера" class="preview-hero" />
+        {% endif %}
+        <div class="preview-bubble">
+          <div class="preview-brand">{{ ui_values.get('brand_name', '') }}</div>
+          <div class="preview-tagline">{{ ui_values.get('brand_tagline', '') }}</div>
+          <p>{{ ui_values.get('welcome_text', '') }}</p>
+          <pre>{{ ui_values.get('features_text', '') }}</pre>
+        </div>
+        <div class="preview-actions">
+          <span>{{ ui_values.get('button_buy', '') }}</span>
+          <span>{{ ui_values.get('button_plans', '') }}</span>
+          <span>{{ ui_values.get('button_orders', '') }}</span>
+          <span>{{ ui_values.get('button_profile', '') }}</span>
+          <span>{{ ui_values.get('button_support', '') }}</span>
+        </div>
+      </div>
+    </article>
+
+    <article class="card">
+      <h2>Как работает лояльность</h2>
+      <ul class="list">
+        <li>Друг получает скидку {{ ui_values.get('referral_new_user_discount_percent', '10') }}% на первый заказ.</li>
+        <li>Пригласившему начисляется {{ ui_values.get('referral_reward_percent', '15') }}% от суммы первой оплаченной подписки друга.</li>
+        <li>Бонусами можно оплатить до {{ ui_values.get('max_bonus_writeoff_percent', '30') }}% заказа.</li>
+        <li>После {{ ui_values.get('loyalty_orders_threshold', '3') }} оплаченных заказов включается персональная скидка {{ ui_values.get('loyalty_discount_percent', '7') }}%.</li>
+      </ul>
+    </article>
+
+    <article class="card">
+      <h2>Inbound'ы 3x-ui</h2>
+      <ul class="list">
+        {% for inbound in inbounds %}
+        <li>{{ inbound.label }} - {{ inbound.protocol }}:{{ inbound.port }} (ID {{ inbound.id }})</li>
+        {% else %}
+        <li>В 3x-ui пока нет inbound'ов.</li>
+        {% endfor %}
+      </ul>
+    </article>
+  </aside>
+</section>
+{% endblock %}

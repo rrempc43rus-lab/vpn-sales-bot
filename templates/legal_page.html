@@ -1,0 +1,22 @@
+{% extends "public_base.html" %}
+{% block content %}
+<article class="card legal-article">
+  <h2>{{ page.title }}</h2>
+  {% if page.meta %}
+  <p class="muted">{{ page.meta }}</p>
+  {% endif %}
+
+  {% for paragraph in page.intro %}
+  <p>{{ paragraph }}</p>
+  {% endfor %}
+
+  {% for section in page.sections %}
+  <section class="legal-section">
+    <h3>{{ section.title }}</h3>
+    {% for paragraph in section.body %}
+    <p>{{ paragraph }}</p>
+    {% endfor %}
+  </section>
+  {% endfor %}
+</article>
+{% endblock %}

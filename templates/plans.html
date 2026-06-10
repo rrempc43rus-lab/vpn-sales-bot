@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="grid two">
+  <article class="card">
+    <h2>{% if editing_id %}Редактирование тарифа{% else %}Создание тарифа{% endif %}</h2>
+    <form method="post" action="/admin/plans/save" class="stack">
+      {% if editing_id %}
+      <input type="hidden" name="plan_id" value="{{ editing_id }}" />
+      {% endif %}
+
+      <label>
+        <span>Название</span>
+        <input type="text" name="name" value="{{ plan_form.name }}" required />
+      </label>
+
+      <label>
+        <span>Цена (RUB)</span>
+        <input type="number" name="price_rub" min="0" value="{{ plan_form.price_rub }}" required />
+      </label>
+
+      <label>
+        <span>Срок (дней)</span>
+        <input type="number" name="duration_days" min="1" value="{{ plan_form.duration_days }}" required />
+      </label>
+
+      <label>
+        <span>Трафик (GB)</span>
+        <input type="number" name="traffic_gb" min="0" value="{{ plan_form.traffic_gb }}" required />
+      </label>
+      <p class="muted">Поставьте `0`, если подписка должна быть безлимитной.</p>
+
+      <label>
+        <span>Описание</span>
+        <textarea name="description" rows="4">{{ plan_form.description }}</textarea>
+      </label>
+
+      <fieldset class="stack compact">
+        <legend>Привязать inbound'ы 3x-ui</legend>
+        {% for inbound in inbounds %}
+        <label class="checkbox">
+          <input
+            type="checkbox"
+            name="inbound_ids"
+            value="{{ inbound.id }}"
+            {% if inbound.id in plan_form.inbound_ids %}checked{% endif %}
+          />
+          <span>{{ inbound.label }} - {{ inbound.protocol }}:{{ inbound.port }} (ID {{ inbound.id }})</span>
+        </label>
+        {% else %}
+        <p>В 3x-ui пока нет inbound'ов.</p>
+        {% endfor %}
+      </fieldset>
+
+      <label class="checkbox">
+        <input type="checkbox" name="is_active" {% if plan_form.is_active %}checked{% endif %} />
+        <span>Показывать в боте</span>
+      </label>
+
+      <button type="submit">{% if editing_id %}Сохранить изменения{% else %}Создать тариф{% endif %}</button>
+    </form>
+  </article>
+
+  <article class="card">
+    <h2>Существующие тарифы</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Название</th>
+          <th>Цена</th>
+          <th>Дней</th>
+          <th>Трафик</th>
+          <th>Статус</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for plan in plans %}
+        <tr>
+          <td>{{ plan.name }}</td>
+          <td>{{ plan.price_rub }} RUB</td>
+          <td>{{ plan.duration_days }}</td>
+          <td>{{ "Безлимит" if plan.traffic_gb|int <= 0 else (plan.traffic_gb ~ " GB") }}</td>
+          <td><span class="status">{{ "Активен" if plan.is_active else "Отключен" }}</span></td>
+          <td class="actions">
+            <a class="button secondary" href="/admin/plans/{{ plan.id }}">Изменить</a>
+            <form method="post" action="/admin/plans/{{ plan.id }}/delete">
+              <button type="submit" class="danger">Удалить</button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6">Тарифов пока нет.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </article>
+</section>
+{% endblock %}

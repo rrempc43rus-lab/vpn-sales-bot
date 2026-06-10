@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="grid cards">
+  <article class="card stat">
+    <span>Тарифы</span>
+    <strong>{{ stats.plans }}</strong>
+  </article>
+  <article class="card stat">
+    <span>Заказы</span>
+    <strong>{{ stats.orders }}</strong>
+  </article>
+  <article class="card stat">
+    <span>Пользователи</span>
+    <strong>{{ stats.users }}</strong>
+  </article>
+  <article class="card stat">
+    <span>Inbound'ы 3x-ui</span>
+    <strong>{{ stats.inbounds }}</strong>
+  </article>
+  <article class="card stat">
+    <span>Приглашено друзей</span>
+    <strong>{{ stats.referrals }}</strong>
+  </article>
+  <article class="card stat">
+    <span>Бонусный пул</span>
+    <strong>{{ stats.bonus_pool_rub }} RUB</strong>
+  </article>
+</section>
+
+<section class="grid two">
+  <article class="card">
+    <h2>Последние заказы</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Тариф</th>
+          <th>Статус</th>
+          <th>Пользователь</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for order in orders %}
+        <tr>
+          <td>#{{ order.public_id }}</td>
+          <td>{{ order.plan_name }}</td>
+          <td><span class="status">{{ status_label(order.status) }}</span></td>
+          <td>{{ order.telegram_id }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4">Заказов пока нет.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </article>
+
+  <article class="card">
+    <h2>Текущие inbound'ы</h2>
+    <ul class="list">
+      {% for inbound in inbounds %}
+      <li>{{ inbound.label }} - {{ inbound.protocol }}:{{ inbound.port }} (ID {{ inbound.id }})</li>
+      {% else %}
+      <li>В 3x-ui пока нет inbound'ов. Сначала создайте inbound, затем можно будет выдавать VPN через бота.</li>
+      {% endfor %}
+    </ul>
+  </article>
+</section>
+
+<section class="grid two">
+  <article class="card">
+    <h2>Текущие настройки бота</h2>
+    <div class="stack compact">
+      <div><strong>Поддержка:</strong> {{ settings.get("support_contact", "-") }}</div>
+      <div><strong>Инструкция по оплате:</strong> {{ settings.get("payment_instructions", "-") }}</div>
+    </div>
+  </article>
+
+  <article class="card">
+    <h2>Platega</h2>
+    <div class="stack compact">
+      <div><strong>Статус:</strong> {% if platega_enabled %}включена{% else %}не настроена{% endif %}</div>
+      <div><strong>Callback URL:</strong> <span class="mono break">{{ payment_callback_url }}</span></div>
+      <div class="muted">Этот адрес нужно указать в кабинете Platega как callback для POST-уведомлений.</div>
+    </div>
+  </article>
+</section>
+
+<section class="grid two">
+  <article class="card">
+    <h2>Лояльность</h2>
+    <div class="stack compact">
+      <div><strong>Награда пригласившему:</strong> {{ loyalty.referral_reward_percent }}% от оплаченной суммы</div>
+      <div><strong>Скидка другу:</strong> {{ loyalty.referral_new_user_discount_percent }}%</div>
+      <div><strong>Постоянная скидка:</strong> {{ loyalty.loyalty_discount_percent }}% после {{ loyalty.loyalty_orders_threshold }} заказов</div>
+      <div><strong>Списание бонусов:</strong> до {{ loyalty.max_bonus_writeoff_percent }}% от заказа</div>
+    </div>
+  </article>
+</section>
+{% endblock %}

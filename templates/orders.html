@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="card">
+  <h2>Заказы</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Пользователь</th>
+        <th>Тариф</th>
+        <th>Стоимость</th>
+        <th>Оплата</th>
+        <th>Статус</th>
+        <th>Выдача</th>
+        <th>Действия</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for order in orders %}
+      <tr>
+        <td>#{{ order.public_id }}</td>
+        <td>{{ order.telegram_id }}</td>
+        <td>{{ order.plan_name }}</td>
+        <td>
+          <div>К оплате: {{ order.amount_rub }} RUB</div>
+          <div class="muted">База: {{ order.base_amount_rub }} RUB</div>
+          {% if order.discount_rub|int > 0 %}
+          <div class="muted">Скидка: -{{ order.discount_rub }} RUB ({{ order.applied_discount_percent }}%)</div>
+          {% endif %}
+          {% if order.bonus_applied_rub|int > 0 %}
+          <div class="muted">Бонусы: -{{ order.bonus_applied_rub }} RUB</div>
+          {% endif %}
+        </td>
+        <td>
+          {% if order.payment_provider %}
+          <div><strong>{{ order.payment_provider }}</strong></div>
+          {% endif %}
+          {% if order.payment_status %}
+          <div class="muted">Статус: {{ order.payment_status }}</div>
+          {% endif %}
+          {% if order.payment_method %}
+          <div class="muted">Метод: {{ order.payment_method }}</div>
+          {% endif %}
+          {% if order.payment_transaction_id %}
+          <div class="mono break">{{ order.payment_transaction_id }}</div>
+          {% endif %}
+          {% if order.payment_url %}
+          <div><a href="{{ order.payment_url }}" target="_blank">Страница оплаты</a></div>
+          {% endif %}
+        </td>
+        <td><span class="status">{{ status_label(order.status) }}</span></td>
+        <td>
+          {% if order.xui_subscription_url %}
+          <div><a href="{{ order.xui_subscription_url }}" target="_blank">Подписка</a></div>
+          {% endif %}
+          {% for link in order_links(order) %}
+          <div class="mono break">{{ link }}</div>
+          {% endfor %}
+          {% if order.provisioning_error %}
+          <div class="alert error">{{ order.provisioning_error }}</div>
+          {% endif %}
+        </td>
+        <td class="actions wide">
+          {% if order.payment_provider == "platega" and order.payment_transaction_id %}
+          <form method="post" action="/admin/orders/{{ order.id }}/sync-payment">
+            <button type="submit" class="secondary">Синхронизировать оплату</button>
+          </form>
+          {% endif %}
+          <form method="post" action="/admin/orders/{{ order.id }}/status">
+            <input type="hidden" name="status" value="paid" />
+            <button type="submit" class="secondary">Отметить оплаченным</button>
+          </form>
+          <form method="post" action="/admin/orders/{{ order.id }}/deliver">
+            <button type="submit">Выдать</button>
+          </form>
+          {% if order.xui_subscription_url %}
+          <form method="post" action="/admin/orders/{{ order.id }}/resend">
+            <button type="submit" class="secondary">Переотправить</button>
+          </form>
+          {% endif %}
+          <form method="post" action="/admin/orders/{{ order.id }}/status">
+            <input type="hidden" name="status" value="cancelled" />
+            <button type="submit" class="danger">Отменить</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="8">Заказов пока нет.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

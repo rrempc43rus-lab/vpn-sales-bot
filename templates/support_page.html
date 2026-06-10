@@ -1,0 +1,19 @@
+{% extends "public_base.html" %}
+{% block content %}
+<article class="card legal-article">
+  <h2>Контакты поддержки</h2>
+  <p class="muted">Связаться с поддержкой можно по контактам, указанным ниже.</p>
+
+  <section class="legal-section">
+    <h3>Как обратиться</h3>
+    <p>{{ support_text }}</p>
+    <p><strong>Контакт для обратной связи:</strong> {{ support_contact }}</p>
+  </section>
+
+  {% if support_contact_url %}
+  <div class="actions">
+    <a href="{{ support_contact_url }}" class="button" target="_blank" rel="noopener noreferrer">Написать в поддержку</a>
+  </div>
+  {% endif %}
+</article>
+{% endblock %}

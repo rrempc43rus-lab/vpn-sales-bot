@@ -1,0 +1,34 @@
+{% extends "public_base.html" %}
+{% block content %}
+<section class="grid public-grid">
+  <article class="card">
+    <h2>Документы и контакты</h2>
+    <p class="muted">
+      На этой странице собрана базовая информация о сервисе: политика конфиденциальности,
+      пользовательское соглашение и контакты для обратной связи.
+    </p>
+
+    <div class="public-cards">
+      {% for item in nav_items %}
+      <a href="{{ item.url }}" class="public-card-link">
+        <strong>{{ item.title }}</strong>
+        <span>Открыть страницу</span>
+      </a>
+      {% endfor %}
+    </div>
+  </article>
+
+  <article class="card">
+    <h2>Контакты поддержки</h2>
+    <p class="muted">Если у вас есть вопрос по работе сервиса, оплате или активной подписке, используйте контакт ниже.</p>
+    <div class="support-box">
+      <div><strong>Контакт:</strong> {{ support_contact }}</div>
+      {% if support_contact_url %}
+      <div class="actions">
+        <a href="{{ support_contact_url }}" class="button" target="_blank" rel="noopener noreferrer">Связаться с поддержкой</a>
+      </div>
+      {% endif %}
+    </div>
+  </article>
+</section>
+{% endblock %}

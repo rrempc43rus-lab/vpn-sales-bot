@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="card">
+  <h2>Пользователи Telegram</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Telegram ID</th>
+        <th>Username</th>
+        <th>Имя</th>
+        <th>Заказы</th>
+        <th>Рефералка</th>
+        <th>Бонусы</th>
+        <th>Последняя активность</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for user in users %}
+      <tr>
+        <td>{{ user.telegram_id }}</td>
+        <td>{{ user.username or "-" }}</td>
+        <td>{{ user.first_name or "" }} {{ user.last_name or "" }}</td>
+        <td>
+          <div>Всего: {{ user.orders_count }}</div>
+          <div class="muted">Выдано: {{ user.delivered_orders_count }}</div>
+        </td>
+        <td>
+          <div>Код: <span class="mono">{{ user.referral_code or "-" }}</span></div>
+          <div class="muted">Пригласил: {{ user.inviter_username or user.inviter_telegram_id or "-" }}</div>
+          <div class="muted">Привел: {{ user.referred_users_count }}</div>
+        </td>
+        <td>
+          <div>{{ user.referral_bonus_balance_rub }} RUB</div>
+          <div class="muted">Всего начислено: {{ user.total_referral_earned_rub }} RUB</div>
+        </td>
+        <td>{{ user.last_seen_at }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7">Пользователей Telegram пока нет.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

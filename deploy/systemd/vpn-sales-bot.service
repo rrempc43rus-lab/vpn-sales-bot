@@ -1,0 +1,14 @@
+[Unit]
+Description=Telegram VPN sales bot with admin panel
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/vpn-sales-bot
+EnvironmentFile=/opt/vpn-sales-bot/.env
+ExecStart=/opt/vpn-sales-bot/.venv/bin/uvicorn app.main:app --host ${APP_HOST} --port ${APP_PORT}
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

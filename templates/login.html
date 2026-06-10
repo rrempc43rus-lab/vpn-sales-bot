@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{ bot_name }} - Вход в админку</title>
+    <link rel="stylesheet" href="/static/app.css" />
+  </head>
+  <body class="login-page">
+    <main class="login-card">
+      <div class="eyebrow">VPN SALES BOT</div>
+      <h1>{{ bot_name }} - Админка</h1>
+      <p>Управление тарифами, заказами, интерфейсом бота и выдачей VPN через 3x-ui из одного места.</p>
+      {% if error %}
+      <div class="alert error">{{ error }}</div>
+      {% endif %}
+      <form method="post" action="/admin/login" class="stack">
+        <label>
+          <span>Логин</span>
+          <input type="text" name="username" required />
+        </label>
+        <label>
+          <span>Пароль</span>
+          <input type="password" name="password" required />
+        </label>
+        <button type="submit">Войти</button>
+      </form>
+    </main>
+  </body>
+</html>
