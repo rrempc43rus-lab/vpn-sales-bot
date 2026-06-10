@@ -66,6 +66,14 @@ def status_label(status: str) -> str:
     }.get(status, status)
 
 
+def withdraw_status_label(status: str) -> str:
+    return {
+        "pending": "Ожидает выплаты",
+        "paid": "Выплачено",
+        "rejected": "Отклонено",
+    }.get(status, status)
+
+
 def require_admin(request: Request, settings: Settings) -> RedirectResponse | None:
     if request.session.get("admin") != settings.admin_username:
         return RedirectResponse("/admin/login", status_code=302)
@@ -397,22 +405,29 @@ def build_router(
                 "support_contact": support_contact,
                 "support_contact_url": support_contact_url(support_contact),
                 "status_label": status_label,
+                "withdraw_status_label": withdraw_status_label,
             },
         )
 
     @router.post("/partner/request-payout")
-    async def partner_request_payout(request: Request):
+    async def partner_request_payout(request: Request, payout_details: str = Form("")):
         partner = require_partner(request, db)
         if isinstance(partner, RedirectResponse):
             return partner
         try:
-            payout_request = db.create_partner_withdraw_request(int(partner["id"]), min_amount_rub=1000)
+            payout_request = db.create_partner_withdraw_request(
+                int(partner["id"]),
+                min_amount_rub=1000,
+                payout_details=payout_details,
+            )
         except ValueError as exc:
             message = str(exc).lower()
             if "pending" in message:
                 return RedirectResponse("/partner?withdraw=pending", status_code=302)
             if "too low" in message:
                 return RedirectResponse("/partner?withdraw=low_balance", status_code=302)
+            if "details" in message:
+                return RedirectResponse("/partner?withdraw=details_required", status_code=302)
             return RedirectResponse("/partner?withdraw=error", status_code=302)
 
         partner_label = str(
@@ -424,7 +439,10 @@ def build_router(
         await notify_admin(
             bot,
             settings.admin_telegram_id,
-            f"💸 Запрос на вывод: {partner_label} ({payout_request['telegram_id']}) — {payout_request['amount_rub']} RUB",
+            (
+                f"💸 Запрос на вывод: {partner_label} ({payout_request['telegram_id']}) — "
+                f"{payout_request['amount_rub']} RUB\n{payout_request['payout_details']}"
+            ),
         )
         return RedirectResponse("/partner?withdraw=ok", status_code=302)
 
@@ -550,6 +568,62 @@ def build_router(
                 "platega_enabled": settings.platega_enabled,
             },
         )
+
+    @router.get("/admin/withdraws", response_class=HTMLResponse)
+    async def withdraws_page(request: Request):
+        redirect = require_admin(request, settings)
+        if redirect:
+            return redirect
+        withdraw_requests = db.list_all_partner_withdraw_requests()
+        stats = {
+            "total": len(withdraw_requests),
+            "pending": sum(1 for item in withdraw_requests if str(item["status"]) == "pending"),
+            "pending_amount_rub": sum(
+                int(item["amount_rub"] or 0) for item in withdraw_requests if str(item["status"]) == "pending"
+            ),
+        }
+        return templates.TemplateResponse(
+            "withdraws.html",
+            {
+                "request": request,
+                "withdraw_requests": withdraw_requests,
+                "stats": stats,
+                "bot_name": settings.bot_name,
+                "withdraw_status_label": withdraw_status_label,
+            },
+        )
+
+    @router.post("/admin/withdraws/{request_id}/status")
+    async def update_withdraw_request(
+        request: Request,
+        request_id: int,
+        action: str = Form(...),
+        note: str = Form(""),
+    ):
+        redirect = require_admin(request, settings)
+        if redirect:
+            return redirect
+
+        if action == "paid":
+            row = db.record_partner_payout_for_request(request_id, note=note)
+        elif action == "rejected":
+            row = db.update_partner_withdraw_request_status(request_id, "rejected", note=note)
+        elif action == "pending":
+            row = db.update_partner_withdraw_request_status(request_id, "pending", note=note)
+        else:
+            raise HTTPException(status_code=400, detail="Unsupported action")
+
+        if row is None:
+            return RedirectResponse("/admin/withdraws", status_code=302)
+
+        if action == "paid":
+            partner_label = str(row["partner_name"] or row["username"] or row["first_name"] or row["telegram_id"])
+            await notify_admin(
+                bot,
+                settings.admin_telegram_id,
+                f"✅ Выплата отмечена: {partner_label} ({row['telegram_id']}) — {row['amount_rub']} RUB",
+            )
+        return RedirectResponse("/admin/withdraws", status_code=302)
 
     @router.get("/admin/plans", response_class=HTMLResponse)
     async def plans_page(request: Request):

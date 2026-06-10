@@ -32,13 +32,26 @@
   <div class="alert error">У вас уже есть активная заявка на вывод.</div>
   {% elif withdraw_status == "low_balance" %}
   <div class="alert error">Для вывода нужно накопить минимум {{ min_withdraw_rub }} RUB.</div>
+  {% elif withdraw_status == "details_required" %}
+  <div class="alert error">Укажите реквизиты или способ выплаты, куда перевести деньги.</div>
   {% elif withdraw_status == "error" %}
   <div class="alert error">Не удалось создать заявку на вывод. Попробуйте позже.</div>
   {% endif %}
   {% if pending_withdraw %}
-  <div class="alert">Активная заявка: {{ pending_withdraw.amount_rub }} RUB от {{ pending_withdraw.created_at }}.</div>
+  <div class="alert">
+    Активная заявка: {{ pending_withdraw.amount_rub }} RUB от {{ pending_withdraw.created_at }}.<br />
+    Куда вывести: {{ pending_withdraw.payout_details }}
+  </div>
   {% elif stats.balance_rub >= min_withdraw_rub %}
-  <form method="post" action="/partner/request-payout">
+  <form method="post" action="/partner/request-payout" class="stack compact">
+    <label>
+      <span>Куда вывести деньги</span>
+      <textarea
+        name="payout_details"
+        placeholder="Например: СБП +79990001122, карта, USDT TRC20, банк и ФИО"
+        required
+      ></textarea>
+    </label>
     <button type="submit">Запросить вывод</button>
   </form>
   {% else %}
@@ -140,6 +153,7 @@
       <tr>
         <th>Дата</th>
         <th>Сумма</th>
+        <th>Куда вывести</th>
         <th>Статус</th>
         <th>Примечание</th>
       </tr>
@@ -149,11 +163,12 @@
       <tr>
         <td>{{ item.created_at }}</td>
         <td>{{ item.amount_rub }} RUB</td>
-        <td><span class="status">{{ item.status }}</span></td>
+        <td>{{ item.payout_details }}</td>
+        <td><span class="status">{{ withdraw_status_label(item.status) }}</span></td>
         <td>{{ item.note or "-" }}</td>
       </tr>
       {% else %}
-      <tr><td colspan="4">Заявок на вывод пока не было.</td></tr>
+      <tr><td colspan="5">Заявок на вывод пока не было.</td></tr>
       {% endfor %}
     </tbody>
   </table>

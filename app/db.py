@@ -216,6 +216,7 @@ class Database:
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     user_id INTEGER NOT NULL,
                     amount_rub INTEGER NOT NULL,
+                    payout_details TEXT NOT NULL DEFAULT '',
                     status TEXT NOT NULL DEFAULT 'pending',
                     created_at TEXT NOT NULL,
                     processed_at TEXT,
@@ -259,6 +260,7 @@ class Database:
         self._ensure_column(conn, "orders", "payment_method", "TEXT")
         self._ensure_column(conn, "orders", "payment_currency", "TEXT NOT NULL DEFAULT 'RUB'")
         self._ensure_column(conn, "orders", "payment_raw_payload", "TEXT NOT NULL DEFAULT ''")
+        self._ensure_column(conn, "partner_withdraw_requests", "payout_details", "TEXT NOT NULL DEFAULT ''")
 
         conn.execute(
             """
@@ -668,6 +670,117 @@ class Database:
                 (user_id, applied, "Manual payout", utc_now_iso()),
             )
             return applied
+
+    def record_partner_payout_for_request(self, request_id: int, note: str = "") -> sqlite3.Row | None:
+        with self.connect() as conn:
+            request_row = conn.execute(
+                """
+                SELECT r.id, r.user_id, r.amount_rub, r.status, r.payout_details,
+                       u.telegram_id, u.username, u.first_name, u.partner_name
+                FROM partner_withdraw_requests r
+                JOIN tg_users u ON u.id = r.user_id
+                WHERE r.id = ?
+                """,
+                (request_id,),
+            ).fetchone()
+            if request_row is None or str(request_row["status"]) != "pending":
+                return None
+
+            available_balance = conn.execute(
+                "SELECT partner_balance_rub FROM tg_users WHERE id = ?",
+                (int(request_row["user_id"]),),
+            ).fetchone()
+            if available_balance is None:
+                return None
+
+            applied = min(
+                max(0, int(request_row["amount_rub"] or 0)),
+                max(0, int(available_balance["partner_balance_rub"] or 0)),
+            )
+            if applied <= 0:
+                return None
+
+            processed_at = utc_now_iso()
+            payout_note = note.strip() or f"Withdraw request #{request_id}"
+            conn.execute(
+                """
+                UPDATE tg_users
+                SET partner_balance_rub = partner_balance_rub - ?,
+                    partner_paid_out_rub = partner_paid_out_rub + ?
+                WHERE id = ?
+                """,
+                (applied, applied, int(request_row["user_id"])),
+            )
+            conn.execute(
+                """
+                INSERT INTO partner_payouts(user_id, amount_rub, note, created_at)
+                VALUES (?, ?, ?, ?)
+                """,
+                (int(request_row["user_id"]), applied, payout_note, processed_at),
+            )
+            conn.execute(
+                """
+                UPDATE partner_withdraw_requests
+                SET status = 'paid',
+                    amount_rub = ?,
+                    processed_at = ?,
+                    note = ?
+                WHERE id = ?
+                """,
+                (applied, processed_at, payout_note, request_id),
+            )
+            return conn.execute(
+                """
+                SELECT r.id, r.user_id, r.amount_rub, r.payout_details, r.status, r.created_at, r.processed_at, r.note,
+                       u.telegram_id, u.username, u.first_name, u.partner_name
+                FROM partner_withdraw_requests r
+                JOIN tg_users u ON u.id = r.user_id
+                WHERE r.id = ?
+                """,
+                (request_id,),
+            ).fetchone()
+
+    def update_partner_withdraw_request_status(self, request_id: int, status: str, note: str = "") -> sqlite3.Row | None:
+        normalized = status.strip().lower()
+        if normalized not in {"pending", "rejected"}:
+            raise ValueError("Unsupported withdraw request status")
+        with self.connect() as conn:
+            row = conn.execute(
+                """
+                SELECT r.id, r.user_id, r.amount_rub, r.payout_details, r.status, r.created_at, r.processed_at, r.note,
+                       u.telegram_id, u.username, u.first_name, u.partner_name
+                FROM partner_withdraw_requests r
+                JOIN tg_users u ON u.id = r.user_id
+                WHERE r.id = ?
+                """,
+                (request_id,),
+            ).fetchone()
+            if row is None:
+                return None
+            current_status = str(row["status"] or "").strip().lower()
+            if current_status == "paid":
+                return None
+            if normalized == "pending" and current_status != "rejected":
+                return None
+            processed_at = utc_now_iso() if normalized != "pending" else None
+            conn.execute(
+                """
+                UPDATE partner_withdraw_requests
+                SET status = ?, processed_at = ?, note = ?
+                WHERE id = ?
+                """,
+                (normalized, processed_at, note.strip(), request_id),
+            )
+            return conn.execute(
+                """
+                SELECT r.id, r.user_id, r.amount_rub, r.payout_details, r.status, r.created_at, r.processed_at, r.note,
+                       u.telegram_id, u.username, u.first_name, u.partner_name
+                FROM partner_withdraw_requests r
+                JOIN tg_users u ON u.id = r.user_id
+                WHERE r.id = ?
+                """,
+                (request_id,),
+            ).fetchone()
 
     def list_plans(self, active_only: bool = False, *, include_trial: bool = False) -> list[sqlite3.Row]:
         query = "SELECT * FROM plans"
@@ -1443,7 +1556,7 @@ class Database:
         with self.connect() as conn:
             return conn.execute(
                 """
-                SELECT id, amount_rub, status, created_at, processed_at, note
+                SELECT id, amount_rub, payout_details, status, created_at, processed_at, note
                 FROM partner_withdraw_requests
                 WHERE user_id = ?
                 ORDER BY id DESC
@@ -1456,7 +1569,7 @@ class Database:
         with self.connect() as conn:
             return conn.execute(
                 """
-                SELECT id, amount_rub, status, created_at, processed_at, note
+                SELECT id, amount_rub, payout_details, status, created_at, processed_at, note
                 FROM partner_withdraw_requests
                 WHERE user_id = ? AND status = 'pending'
                 ORDER BY id DESC
@@ -1465,7 +1578,27 @@ class Database:
                 (partner_user_id,),
             ).fetchone()
 
-    def create_partner_withdraw_request(self, partner_user_id: int, *, min_amount_rub: int = 1000) -> sqlite3.Row:
+    def list_all_partner_withdraw_requests(self, *, limit: int = 200) -> list[sqlite3.Row]:
+        with self.connect() as conn:
+            return conn.execute(
+                """
+                SELECT r.id, r.user_id, r.amount_rub, r.payout_details, r.status, r.created_at, r.processed_at, r.note,
+                       u.telegram_id, u.username, u.first_name, u.partner_name
+                FROM partner_withdraw_requests r
+                JOIN tg_users u ON u.id = r.user_id
+                ORDER BY CASE WHEN r.status = 'pending' THEN 0 ELSE 1 END, r.id DESC
+                LIMIT ?
+                """,
+                (max(1, int(limit)),),
+            ).fetchall()
+
+    def create_partner_withdraw_request(
+        self,
+        partner_user_id: int,
+        *,
+        min_amount_rub: int = 1000,
+        payout_details: str = "",
+    ) -> sqlite3.Row:
         with self.connect() as conn:
             user = conn.execute(
                 """
@@ -1494,19 +1627,22 @@ class Database:
             balance_rub = int(user["partner_balance_rub"] or 0)
             if balance_rub < max(1, int(min_amount_rub)):
                 raise ValueError("Balance is too low")
+            details = payout_details.strip()
+            if not details:
+                raise ValueError("Payout details are required")
 
             created_at = utc_now_iso()
             conn.execute(
                 """
-                INSERT INTO partner_withdraw_requests(user_id, amount_rub, status, created_at, processed_at, note)
-                VALUES (?, ?, 'pending', ?, NULL, '')
+                INSERT INTO partner_withdraw_requests(user_id, amount_rub, payout_details, status, created_at, processed_at, note)
+                VALUES (?, ?, ?, 'pending', ?, NULL, '')
                 """,
-                (partner_user_id, balance_rub, created_at),
+                (partner_user_id, balance_rub, details, created_at),
             )
             request_id = int(conn.execute("SELECT last_insert_rowid()").fetchone()[0])
             row = conn.execute(
                 """
-                SELECT r.id, r.amount_rub, r.status, r.created_at, r.processed_at, r.note,
+                SELECT r.id, r.amount_rub, r.payout_details, r.status, r.created_at, r.processed_at, r.note,
                        u.telegram_id, u.username, u.first_name, u.partner_name
                 FROM partner_withdraw_requests r
                 JOIN tg_users u ON u.id = r.user_id

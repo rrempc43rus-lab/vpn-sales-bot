@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="grid cards">
+  <article class="card stat">
+    <span>Всего заявок</span>
+    <strong>{{ stats.total }}</strong>
+  </article>
+  <article class="card stat">
+    <span>Ожидают выплаты</span>
+    <strong>{{ stats.pending }}</strong>
+  </article>
+  <article class="card stat">
+    <span>Сумма в ожидании</span>
+    <strong>{{ stats.pending_amount_rub }} RUB</strong>
+  </article>
+</section>
+
+<section class="card">
+  <h2>Заявки на вывод партнеров</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Партнер</th>
+        <th>Дата</th>
+        <th>Сумма</th>
+        <th>Куда вывести</th>
+        <th>Статус</th>
+        <th>Примечание</th>
+        <th>Действия</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in withdraw_requests %}
+      <tr>
+        <td>
+          <div><strong>{{ item.partner_name or item.username or item.first_name or item.telegram_id }}</strong></div>
+          <div class="muted">ID: {{ item.telegram_id }}</div>
+        </td>
+        <td>
+          <div>{{ item.created_at }}</div>
+          <div class="muted">{% if item.processed_at %}Обработано: {{ item.processed_at }}{% else %}-{% endif %}</div>
+        </td>
+        <td>{{ item.amount_rub }} RUB</td>
+        <td class="break">{{ item.payout_details }}</td>
+        <td><span class="status">{{ withdraw_status_label(item.status) }}</span></td>
+        <td>{{ item.note or "-" }}</td>
+        <td>
+          <form method="post" action="/admin/withdraws/{{ item.id }}/status" class="stack compact">
+            <label>
+              <span>Примечание</span>
+              <textarea name="note" placeholder="Например: выплачено на СБП / отклонено из-за ошибки в реквизитах"></textarea>
+            </label>
+            <div class="actions wide">
+              {% if item.status == "pending" %}
+              <button type="submit" name="action" value="paid">Отметить выплаченным</button>
+              <button type="submit" name="action" value="rejected" class="secondary">Отклонить</button>
+              {% elif item.status == "rejected" %}
+              <button type="submit" name="action" value="pending" class="secondary">Вернуть в ожидание</button>
+              {% else %}
+              <span class="muted">Заявка закрыта</span>
+              {% endif %}
+            </div>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7">Заявок на вывод пока нет.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}
