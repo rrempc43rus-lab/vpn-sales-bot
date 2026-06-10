@@ -74,6 +74,17 @@ def withdraw_status_label(status: str) -> str:
     }.get(status, status)
 
 
+def normalize_sbp_phone(value: str) -> str | None:
+    digits = "".join(ch for ch in value if ch.isdigit())
+    if len(digits) == 10:
+        digits = f"7{digits}"
+    elif len(digits) == 11 and digits.startswith("8"):
+        digits = f"7{digits[1:]}"
+    if len(digits) != 11 or not digits.startswith("7"):
+        return None
+    return f"+{digits}"
+
+
 def require_admin(request: Request, settings: Settings) -> RedirectResponse | None:
     if request.session.get("admin") != settings.admin_username:
         return RedirectResponse("/admin/login", status_code=302)
@@ -410,10 +421,21 @@ def build_router(
         )
 
     @router.post("/partner/request-payout")
-    async def partner_request_payout(request: Request, payout_details: str = Form("")):
+    async def partner_request_payout(
+        request: Request,
+        sbp_phone: str = Form(""),
+        sbp_bank: str = Form(""),
+    ):
         partner = require_partner(request, db)
         if isinstance(partner, RedirectResponse):
             return partner
+        normalized_phone = normalize_sbp_phone(sbp_phone)
+        if normalized_phone is None:
+            return RedirectResponse("/partner?withdraw=invalid_sbp", status_code=302)
+        payout_details = f"СБП: {normalized_phone}"
+        bank_name = sbp_bank.strip()
+        if bank_name:
+            payout_details = f"{payout_details}, банк: {bank_name}"
         try:
             payout_request = db.create_partner_withdraw_request(
                 int(partner["id"]),

@@ -32,7 +32,7 @@
         <th>Партнер</th>
         <th>Дата</th>
         <th>Сумма</th>
-        <th>Куда вывести</th>
+        <th>СБП</th>
         <th>Статус</th>
         <th>Примечание</th>
         <th>Действия</th>
@@ -57,7 +57,7 @@
           <form method="post" action="/admin/withdraws/{{ item.id }}/status" class="stack compact">
             <label>
               <span>Примечание</span>
-              <textarea name="note" placeholder="Например: выплачено на СБП / отклонено из-за ошибки в реквизитах"></textarea>
+              <textarea name="note" placeholder="Например: выплачено по СБП / отклонено из-за ошибки в номере"></textarea>
             </label>
             <div class="actions wide">
               {% if item.status == "pending" %}

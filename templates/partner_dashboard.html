@@ -32,25 +32,36 @@
   <div class="alert error">У вас уже есть активная заявка на вывод.</div>
   {% elif withdraw_status == "low_balance" %}
   <div class="alert error">Для вывода нужно накопить минимум {{ min_withdraw_rub }} RUB.</div>
+  {% elif withdraw_status == "invalid_sbp" %}
+  <div class="alert error">Укажите корректный номер телефона для вывода по СБП.</div>
   {% elif withdraw_status == "details_required" %}
-  <div class="alert error">Укажите реквизиты или способ выплаты, куда перевести деньги.</div>
+  <div class="alert error">Укажите номер телефона для СБП.</div>
   {% elif withdraw_status == "error" %}
   <div class="alert error">Не удалось создать заявку на вывод. Попробуйте позже.</div>
   {% endif %}
   {% if pending_withdraw %}
   <div class="alert">
     Активная заявка: {{ pending_withdraw.amount_rub }} RUB от {{ pending_withdraw.created_at }}.<br />
-    Куда вывести: {{ pending_withdraw.payout_details }}
+    СБП: {{ pending_withdraw.payout_details }}
   </div>
   {% elif stats.balance_rub >= min_withdraw_rub %}
   <form method="post" action="/partner/request-payout" class="stack compact">
     <label>
-      <span>Куда вывести деньги</span>
-      <textarea
-        name="payout_details"
-        placeholder="Например: СБП +79990001122, карта, USDT TRC20, банк и ФИО"
+      <span>Номер телефона для СБП</span>
+      <input
+        type="tel"
+        name="sbp_phone"
+        placeholder="+79990001122"
         required
-      ></textarea>
+      />
+    </label>
+    <label>
+      <span>Банк для СБП</span>
+      <input
+        type="text"
+        name="sbp_bank"
+        placeholder="Например: Т-Банк"
+      />
     </label>
     <button type="submit">Запросить вывод</button>
   </form>
@@ -153,7 +164,7 @@
       <tr>
         <th>Дата</th>
         <th>Сумма</th>
-        <th>Куда вывести</th>
+        <th>СБП</th>
         <th>Статус</th>
         <th>Примечание</th>
       </tr>
