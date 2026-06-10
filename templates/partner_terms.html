@@ -1,0 +1,47 @@
+{% extends "partner_base.html" %}
+{% block content %}
+<section class="card stack">
+  <div class="section-heading">
+    <div>
+      <h2>{{ terms_title }}</h2>
+      <p class="muted">Партнер: {{ partner_label }} • Версия условий: {{ terms_version }}</p>
+    </div>
+  </div>
+
+  <div class="alert">
+    Перед первым входом в партнерский кабинет нужно принять условия. Без акцепта кабинет и вывод средств недоступны.
+  </div>
+
+  {% for title, items in terms_sections %}
+  <section class="stack compact section-block">
+    <h3>{{ title }}</h3>
+    <ul class="list">
+      {% for item in items %}
+      <li>{{ item }}</li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endfor %}
+
+  <div class="stack compact section-block">
+    <strong>Что означает акцепт</strong>
+    <p class="muted">
+      Нажимая кнопку принятия, партнер подтверждает согласие с условиями партнерской программы.
+      В системе сохраняются дата, версия условий, IP-адрес и user-agent устройства.
+    </p>
+  </div>
+
+  <div class="actions wide">
+    <form method="post" action="/partner/terms/accept">
+      <button type="submit">Принять условия</button>
+    </form>
+    <form method="post" action="/partner/terms/decline">
+      <button type="submit" class="secondary">Не согласен</button>
+    </form>
+  </div>
+
+  {% if support_contact_url %}
+  <a href="{{ support_contact_url }}" class="button secondary" target="_blank" rel="noopener noreferrer">Задать вопрос в поддержку</a>
+  {% endif %}
+</section>
+{% endblock %}

@@ -224,6 +224,16 @@ class Database:
                     note TEXT NOT NULL DEFAULT '',
                     FOREIGN KEY(user_id) REFERENCES tg_users(id)
                 );
+
+                CREATE TABLE IF NOT EXISTS partner_terms_accept_logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    terms_version TEXT NOT NULL,
+                    accepted_at TEXT NOT NULL,
+                    ip_address TEXT NOT NULL DEFAULT '',
+                    user_agent TEXT NOT NULL DEFAULT '',
+                    FOREIGN KEY(user_id) REFERENCES tg_users(id)
+                );
                 """
             )
             self._run_migrations(conn)
@@ -288,6 +298,12 @@ class Database:
             """
             CREATE UNIQUE INDEX IF NOT EXISTS idx_partner_login_codes_code
             ON partner_login_codes(code)
+            """
+        )
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_partner_terms_accept_logs_user_version
+            ON partner_terms_accept_logs(user_id, terms_version, accepted_at DESC)
             """
         )
         self._backfill_referral_codes(conn)
@@ -578,6 +594,61 @@ class Database:
                 "SELECT * FROM tg_users WHERE id = ?",
                 (int(row["user_id"]),),
             ).fetchone()
+
+    def get_partner_terms_acceptance(self, user_id: int, terms_version: str) -> sqlite3.Row | None:
+        with self.connect() as conn:
+            return conn.execute(
+                """
+                SELECT id, user_id, terms_version, accepted_at, ip_address, user_agent
+                FROM partner_terms_accept_logs
+                WHERE user_id = ? AND terms_version = ?
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (user_id, terms_version.strip()),
+            ).fetchone()
+
+    def accept_partner_terms(
+        self,
+        user_id: int,
+        *,
+        terms_version: str,
+        ip_address: str = "",
+        user_agent: str = "",
+    ) -> sqlite3.Row:
+        version = terms_version.strip()
+        if not version:
+            raise ValueError("Terms version is required")
+        with self.connect() as conn:
+            existing = conn.execute(
+                """
+                SELECT id, user_id, terms_version, accepted_at, ip_address, user_agent
+                FROM partner_terms_accept_logs
+                WHERE user_id = ? AND terms_version = ?
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (user_id, version),
+            ).fetchone()
+            if existing is not None:
+                return existing
+            accepted_at = utc_now_iso()
+            conn.execute(
+                """
+                INSERT INTO partner_terms_accept_logs(user_id, terms_version, accepted_at, ip_address, user_agent)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (user_id, version, accepted_at, ip_address.strip(), user_agent.strip()),
+            )
+            row = conn.execute(
+                """
+                SELECT id, user_id, terms_version, accepted_at, ip_address, user_agent
+                FROM partner_terms_accept_logs
+                WHERE id = last_insert_rowid()
+                """
+            ).fetchone()
+            assert row is not None
+            return row
 
     def get_user_by_referral_code(self, referral_code: str) -> sqlite3.Row | None:
         normalized = referral_code.strip().upper()

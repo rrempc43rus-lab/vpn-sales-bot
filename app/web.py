@@ -54,6 +54,38 @@ TEXT_SETTING_FIELDS = [
     "max_bonus_writeoff_percent",
 ]
 
+PARTNER_TERMS_VERSION = "2026-06-11"
+PARTNER_TERMS_TITLE = "Условия партнерской программы"
+PARTNER_TERMS_SECTIONS: list[tuple[str, list[str]]] = [
+    (
+        "Как работает партнерка",
+        [
+            "Партнер получает личную ссылку и кабинет со статистикой, балансом и заявками на вывод.",
+            "Вознаграждение начисляется только по реально оплаченным и выданным подпискам.",
+            "Размер процента задается администратором и отображается в кабинете партнера.",
+        ],
+    ),
+    (
+        "Правила выплат",
+        [
+            "Минимальная сумма для вывода — 1000 RUB.",
+            "Выплаты обрабатываются вручную каждый четверг.",
+            "Вывод доступен только по СБП на номер телефона, который партнер указывает в заявке.",
+            "После отправки заявки сумма резервируется и временно уходит с партнерского баланса.",
+            "Если заявка отклонена, зарезервированная сумма возвращается обратно на баланс.",
+            "После отметки выплаты в админке сумма считается выплаченной и попадает в историю.",
+        ],
+    ),
+    (
+        "Важные условия",
+        [
+            "Запрещено накручивать регистрации, оплаты, создавать фейковые заказы и вводить клиентов в заблуждение.",
+            "Администрация может приостановить партнерский доступ и пересчитать начисления при нарушениях.",
+            "Актуальные условия начинают действовать с момента акцепта в кабинете партнера.",
+        ],
+    ),
+]
+
 
 def status_label(status: str) -> str:
     return {
@@ -105,6 +137,10 @@ def require_partner(request: Request, db: Database) -> sqlite3.Row | RedirectRes
         request.session.pop("partner_user_id", None)
         return RedirectResponse("/partner/login", status_code=302)
     return profile
+
+
+def require_partner_terms(user_id: int, db: Database) -> bool:
+    return db.get_partner_terms_acceptance(user_id, PARTNER_TERMS_VERSION) is not None
 
 
 def row_to_plan_form(plan: sqlite3.Row | None) -> dict[str, object]:
@@ -353,6 +389,8 @@ def build_router(
             return RedirectResponse("/partner/login?error=invalid_code", status_code=302)
         request.session["partner_user_id"] = int(partner["id"])
         request.session.pop("partner_login_user_id", None)
+        if not require_partner_terms(int(partner["id"]), db):
+            return RedirectResponse("/partner/terms", status_code=302)
         return RedirectResponse("/partner", status_code=302)
 
     @router.get("/partner/auth/{token}")
@@ -371,11 +409,57 @@ def build_router(
         request.session.pop("partner_login_user_id", None)
         return RedirectResponse("/partner/login", status_code=302)
 
+    @router.get("/partner/terms", response_class=HTMLResponse)
+    async def partner_terms_page(request: Request):
+        partner = require_partner(request, db)
+        if isinstance(partner, RedirectResponse):
+            return partner
+        if require_partner_terms(int(partner["id"]), db):
+            return RedirectResponse("/partner", status_code=302)
+        ui_values = get_interface_settings(db, settings)
+        support_contact = ui_values.get("support_contact", settings.support_contact)
+        partner_label = str(partner["partner_name"] or partner["username"] or partner["telegram_id"])
+        return templates.TemplateResponse(
+            "partner_terms.html",
+            {
+                "request": request,
+                "bot_name": ui_values.get("brand_name", settings.bot_name),
+                "brand_tagline": ui_values.get("brand_tagline", ""),
+                "partner_label": partner_label,
+                "terms_title": PARTNER_TERMS_TITLE,
+                "terms_version": PARTNER_TERMS_VERSION,
+                "terms_sections": PARTNER_TERMS_SECTIONS,
+                "support_contact": support_contact,
+                "support_contact_url": support_contact_url(support_contact),
+            },
+        )
+
+    @router.post("/partner/terms/accept")
+    async def partner_terms_accept(request: Request):
+        partner = require_partner(request, db)
+        if isinstance(partner, RedirectResponse):
+            return partner
+        db.accept_partner_terms(
+            int(partner["id"]),
+            terms_version=PARTNER_TERMS_VERSION,
+            ip_address=str(request.client.host if request.client else ""),
+            user_agent=str(request.headers.get("user-agent") or ""),
+        )
+        return RedirectResponse("/partner", status_code=302)
+
+    @router.post("/partner/terms/decline")
+    async def partner_terms_decline(request: Request):
+        request.session.pop("partner_user_id", None)
+        request.session.pop("partner_login_user_id", None)
+        return RedirectResponse("/partner/login?error=terms_declined", status_code=302)
+
     @router.get("/partner", response_class=HTMLResponse)
     async def partner_dashboard(request: Request):
         partner = require_partner(request, db)
         if isinstance(partner, RedirectResponse):
             return partner
+        if not require_partner_terms(int(partner["id"]), db):
+            return RedirectResponse("/partner/terms", status_code=302)
         ui_values = get_interface_settings(db, settings)
         support_contact = ui_values.get("support_contact", settings.support_contact)
         partner_label = str(partner["partner_name"] or partner["username"] or partner["telegram_id"])
@@ -429,6 +513,8 @@ def build_router(
         partner = require_partner(request, db)
         if isinstance(partner, RedirectResponse):
             return partner
+        if not require_partner_terms(int(partner["id"]), db):
+            return RedirectResponse("/partner/terms", status_code=302)
         normalized_phone = normalize_sbp_phone(sbp_phone)
         if normalized_phone is None:
             return RedirectResponse("/partner?withdraw=invalid_sbp", status_code=302)

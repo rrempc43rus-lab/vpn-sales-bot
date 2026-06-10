@@ -13,6 +13,8 @@
   <div class="alert error">Ссылка входа недействительна или устарела.</div>
   {% elif error_code == "invalid_code" %}
   <div class="alert error">Код неверный, просрочен или уже использован. Запросите новый код в боте.</div>
+  {% elif error_code == "terms_declined" %}
+  <div class="alert error">Для входа в партнерский кабинет нужно принять условия партнерской программы.</div>
   {% endif %}
   <form method="post" action="/partner/login-code" class="stack compact">
     <label>
