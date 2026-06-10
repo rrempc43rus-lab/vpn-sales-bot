@@ -377,6 +377,7 @@ def build_router(
             "earned_rub": int(partner["total_partner_earned_rub"] or 0),
             "paid_out_rub": int(partner["partner_paid_out_rub"] or 0),
         }
+        pending_withdraw = db.get_pending_partner_withdraw_request(int(partner["id"]))
         return templates.TemplateResponse(
             "partner_dashboard.html",
             {
@@ -386,14 +387,46 @@ def build_router(
                 "partner": partner,
                 "partner_label": partner_label,
                 "stats": stats,
+                "min_withdraw_rub": 1000,
+                "pending_withdraw": pending_withdraw,
+                "withdraw_status": str(request.query_params.get("withdraw") or "").strip(),
                 "partner_referral_link": partner_referral_link,
                 "orders": db.list_partner_orders(int(partner["id"])),
                 "payouts": db.list_partner_payouts(int(partner["id"])),
+                "withdraw_requests": db.list_partner_withdraw_requests(int(partner["id"])),
                 "support_contact": support_contact,
                 "support_contact_url": support_contact_url(support_contact),
                 "status_label": status_label,
             },
         )
+
+    @router.post("/partner/request-payout")
+    async def partner_request_payout(request: Request):
+        partner = require_partner(request, db)
+        if isinstance(partner, RedirectResponse):
+            return partner
+        try:
+            payout_request = db.create_partner_withdraw_request(int(partner["id"]), min_amount_rub=1000)
+        except ValueError as exc:
+            message = str(exc).lower()
+            if "pending" in message:
+                return RedirectResponse("/partner?withdraw=pending", status_code=302)
+            if "too low" in message:
+                return RedirectResponse("/partner?withdraw=low_balance", status_code=302)
+            return RedirectResponse("/partner?withdraw=error", status_code=302)
+
+        partner_label = str(
+            payout_request["partner_name"]
+            or payout_request["username"]
+            or payout_request["first_name"]
+            or payout_request["telegram_id"]
+        )
+        await notify_admin(
+            bot,
+            settings.admin_telegram_id,
+            f"💸 Запрос на вывод: {partner_label} ({payout_request['telegram_id']}) — {payout_request['amount_rub']} RUB",
+        )
+        return RedirectResponse("/partner?withdraw=ok", status_code=302)
 
     @router.post("/api/payment-callback")
     async def payment_callback(request: Request):

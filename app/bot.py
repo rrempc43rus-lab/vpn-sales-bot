@@ -489,8 +489,7 @@ def profile_keyboard(
     if share_url:
         rows.append([InlineKeyboardButton(text="🎁 Пригласить друга", url=share_url)])
     if partner_cabinet_url:
-        rows.append([InlineKeyboardButton(text="💼 ЛК партнера", url=partner_cabinet_url)])
-        rows.append([InlineKeyboardButton(text="🔐 Код для входа", callback_data="partner_code")])
+        rows.append([InlineKeyboardButton(text="💼 ЛК", callback_data="partner_code")])
     support_url = support_contact_url(support_contact)
     rows.append(
         [

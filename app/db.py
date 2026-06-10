@@ -211,6 +211,17 @@ class Database:
                     used_at TEXT,
                     FOREIGN KEY(user_id) REFERENCES tg_users(id)
                 );
+
+                CREATE TABLE IF NOT EXISTS partner_withdraw_requests (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    amount_rub INTEGER NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'pending',
+                    created_at TEXT NOT NULL,
+                    processed_at TEXT,
+                    note TEXT NOT NULL DEFAULT '',
+                    FOREIGN KEY(user_id) REFERENCES tg_users(id)
+                );
                 """
             )
             self._run_migrations(conn)
@@ -1427,6 +1438,84 @@ class Database:
                 """,
                 (partner_user_id, max(1, int(limit))),
             ).fetchall()
+
+    def list_partner_withdraw_requests(self, partner_user_id: int, *, limit: int = 20) -> list[sqlite3.Row]:
+        with self.connect() as conn:
+            return conn.execute(
+                """
+                SELECT id, amount_rub, status, created_at, processed_at, note
+                FROM partner_withdraw_requests
+                WHERE user_id = ?
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (partner_user_id, max(1, int(limit))),
+            ).fetchall()
+
+    def get_pending_partner_withdraw_request(self, partner_user_id: int) -> sqlite3.Row | None:
+        with self.connect() as conn:
+            return conn.execute(
+                """
+                SELECT id, amount_rub, status, created_at, processed_at, note
+                FROM partner_withdraw_requests
+                WHERE user_id = ? AND status = 'pending'
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (partner_user_id,),
+            ).fetchone()
+
+    def create_partner_withdraw_request(self, partner_user_id: int, *, min_amount_rub: int = 1000) -> sqlite3.Row:
+        with self.connect() as conn:
+            user = conn.execute(
+                """
+                SELECT id, telegram_id, username, first_name, is_partner, partner_balance_rub
+                FROM tg_users
+                WHERE id = ?
+                """,
+                (partner_user_id,),
+            ).fetchone()
+            if user is None or int(user["is_partner"] or 0) != 1:
+                raise ValueError("Partner access is unavailable")
+
+            pending = conn.execute(
+                """
+                SELECT id, amount_rub, status, created_at, processed_at, note
+                FROM partner_withdraw_requests
+                WHERE user_id = ? AND status = 'pending'
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (partner_user_id,),
+            ).fetchone()
+            if pending is not None:
+                raise ValueError("Withdraw request is already pending")
+
+            balance_rub = int(user["partner_balance_rub"] or 0)
+            if balance_rub < max(1, int(min_amount_rub)):
+                raise ValueError("Balance is too low")
+
+            created_at = utc_now_iso()
+            conn.execute(
+                """
+                INSERT INTO partner_withdraw_requests(user_id, amount_rub, status, created_at, processed_at, note)
+                VALUES (?, ?, 'pending', ?, NULL, '')
+                """,
+                (partner_user_id, balance_rub, created_at),
+            )
+            request_id = int(conn.execute("SELECT last_insert_rowid()").fetchone()[0])
+            row = conn.execute(
+                """
+                SELECT r.id, r.amount_rub, r.status, r.created_at, r.processed_at, r.note,
+                       u.telegram_id, u.username, u.first_name, u.partner_name
+                FROM partner_withdraw_requests r
+                JOIN tg_users u ON u.id = r.user_id
+                WHERE r.id = ?
+                """,
+                (request_id,),
+            ).fetchone()
+            assert row is not None
+            return row
 
     def get_user_profile(self, user_id: int) -> sqlite3.Row | None:
         with self.connect() as conn:

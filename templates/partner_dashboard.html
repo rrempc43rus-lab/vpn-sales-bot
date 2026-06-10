@@ -23,6 +23,29 @@
   {% endif %}
 </section>
 
+<section class="card stack">
+  <h2>Вывод средств</h2>
+  <p class="muted">Минимальный вывод: {{ min_withdraw_rub }} RUB. Заявки на вывод обрабатываются каждый четверг.</p>
+  {% if withdraw_status == "ok" %}
+  <div class="alert">Заявка на вывод отправлена. Мы обработаем ее в ближайший четверг.</div>
+  {% elif withdraw_status == "pending" %}
+  <div class="alert error">У вас уже есть активная заявка на вывод.</div>
+  {% elif withdraw_status == "low_balance" %}
+  <div class="alert error">Для вывода нужно накопить минимум {{ min_withdraw_rub }} RUB.</div>
+  {% elif withdraw_status == "error" %}
+  <div class="alert error">Не удалось создать заявку на вывод. Попробуйте позже.</div>
+  {% endif %}
+  {% if pending_withdraw %}
+  <div class="alert">Активная заявка: {{ pending_withdraw.amount_rub }} RUB от {{ pending_withdraw.created_at }}.</div>
+  {% elif stats.balance_rub >= min_withdraw_rub %}
+  <form method="post" action="/partner/request-payout">
+    <button type="submit">Запросить вывод</button>
+  </form>
+  {% else %}
+  <div class="alert">Сейчас на балансе {{ stats.balance_rub }} RUB. Кнопка станет доступна от {{ min_withdraw_rub }} RUB.</div>
+  {% endif %}
+</section>
+
 <section class="grid cards partner-cards">
   <article class="card stat">
     <span>Клиенты</span>
@@ -108,5 +131,31 @@
       </tbody>
     </table>
   </article>
+</section>
+
+<section class="card">
+  <h2>Заявки на вывод</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Дата</th>
+        <th>Сумма</th>
+        <th>Статус</th>
+        <th>Примечание</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in withdraw_requests %}
+      <tr>
+        <td>{{ item.created_at }}</td>
+        <td>{{ item.amount_rub }} RUB</td>
+        <td><span class="status">{{ item.status }}</span></td>
+        <td>{{ item.note or "-" }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="4">Заявок на вывод пока не было.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
 </section>
 {% endblock %}
