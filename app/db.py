@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import json
+import secrets
 import sqlite3
 import uuid
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Iterator
 
@@ -15,6 +16,10 @@ from .interface import default_app_settings
 
 def utc_now_iso() -> str:
     return datetime.now(UTC).replace(microsecond=0).isoformat()
+
+
+def future_iso(*, days: int = 0, hours: int = 0) -> str:
+    return (datetime.now(UTC) + timedelta(days=days, hours=hours)).replace(microsecond=0).isoformat()
 
 
 def generate_public_id() -> str:
@@ -178,6 +183,25 @@ class Database:
                     key TEXT PRIMARY KEY,
                     value TEXT NOT NULL
                 );
+
+                CREATE TABLE IF NOT EXISTS partner_access_tokens (
+                    user_id INTEGER PRIMARY KEY,
+                    token TEXT UNIQUE NOT NULL,
+                    expires_at TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    last_used_at TEXT,
+                    FOREIGN KEY(user_id) REFERENCES tg_users(id)
+                );
+
+                CREATE TABLE IF NOT EXISTS partner_payouts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    amount_rub INTEGER NOT NULL,
+                    note TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY(user_id) REFERENCES tg_users(id)
+                );
                 """
             )
             self._run_migrations(conn)
@@ -228,6 +252,12 @@ class Database:
             CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_payment_transaction_id
             ON orders(payment_transaction_id)
             WHERE payment_transaction_id IS NOT NULL AND TRIM(payment_transaction_id) != ''
+            """
+        )
+        conn.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_partner_access_tokens_token
+            ON partner_access_tokens(token)
             """
         )
         self._backfill_referral_codes(conn)
@@ -368,6 +398,78 @@ class Database:
                 (user_id,),
             ).fetchone()
 
+    def _partner_token_is_active(self, expires_at: str | None) -> bool:
+        if not expires_at:
+            return False
+        try:
+            return datetime.fromisoformat(expires_at) > datetime.now(UTC)
+        except ValueError:
+            return False
+
+    def get_or_create_partner_access_token(self, user_id: int, *, ttl_days: int = 30) -> str:
+        now = utc_now_iso()
+        expires_at = future_iso(days=ttl_days)
+        with self.connect() as conn:
+            user = conn.execute(
+                "SELECT id, is_partner FROM tg_users WHERE id = ?",
+                (user_id,),
+            ).fetchone()
+            if user is None or int(user["is_partner"] or 0) != 1:
+                raise ValueError("Partner access is unavailable")
+
+            token_row = conn.execute(
+                "SELECT token, expires_at FROM partner_access_tokens WHERE user_id = ?",
+                (user_id,),
+            ).fetchone()
+            if token_row is not None and self._partner_token_is_active(str(token_row["expires_at"] or "")):
+                conn.execute(
+                    "UPDATE partner_access_tokens SET updated_at = ? WHERE user_id = ?",
+                    (now, user_id),
+                )
+                return str(token_row["token"])
+
+            token = secrets.token_urlsafe(24)
+            conn.execute(
+                """
+                INSERT INTO partner_access_tokens(user_id, token, expires_at, created_at, updated_at, last_used_at)
+                VALUES (?, ?, ?, ?, ?, NULL)
+                ON CONFLICT(user_id) DO UPDATE SET
+                    token = excluded.token,
+                    expires_at = excluded.expires_at,
+                    updated_at = excluded.updated_at,
+                    last_used_at = NULL
+                """,
+                (user_id, token, expires_at, now, now),
+            )
+            return token
+
+    def get_partner_by_access_token(self, token: str) -> sqlite3.Row | None:
+        normalized = token.strip()
+        if not normalized:
+            return None
+        with self.connect() as conn:
+            row = conn.execute(
+                """
+                SELECT u.*, t.expires_at
+                FROM partner_access_tokens t
+                JOIN tg_users u ON u.id = t.user_id
+                WHERE t.token = ?
+                """,
+                (normalized,),
+            ).fetchone()
+            if row is None or int(row["is_partner"] or 0) != 1:
+                return None
+            if not self._partner_token_is_active(str(row["expires_at"] or "")):
+                return None
+            conn.execute(
+                "UPDATE partner_access_tokens SET last_used_at = ?, updated_at = ? WHERE user_id = ?",
+                (now := utc_now_iso(), now, int(row["id"])),
+            )
+            return conn.execute(
+                "SELECT * FROM tg_users WHERE id = ?",
+                (int(row["id"]),),
+            ).fetchone()
+
     def get_user_by_referral_code(self, referral_code: str) -> sqlite3.Row | None:
         normalized = referral_code.strip().upper()
         with self.connect() as conn:
@@ -452,6 +554,13 @@ class Database:
                 WHERE id = ?
                 """,
                 (applied, applied, user_id),
+            )
+            conn.execute(
+                """
+                INSERT INTO partner_payouts(user_id, amount_rub, note, created_at)
+                VALUES (?, ?, ?, ?)
+                """,
+                (user_id, applied, "Manual payout", utc_now_iso()),
             )
             return applied
 
@@ -1183,6 +1292,94 @@ class Database:
                 ORDER BY u.id DESC
                 """
             ).fetchall()
+
+    def list_partner_orders(self, partner_user_id: int, *, limit: int = 25) -> list[sqlite3.Row]:
+        with self.connect() as conn:
+            return conn.execute(
+                """
+                SELECT o.public_id,
+                       o.status,
+                       o.amount_rub,
+                       o.base_amount_rub,
+                       o.discount_rub,
+                       o.partner_reward_rub,
+                       o.payment_status,
+                       o.created_at,
+                       o.updated_at,
+                       o.is_trial,
+                       COALESCE(p.name, 'РђСЂС…РёРІРЅС‹Р№ С‚Р°СЂРёС„') AS plan_name,
+                       customer.telegram_id AS customer_telegram_id,
+                       customer.username AS customer_username,
+                       customer.first_name AS customer_first_name
+                FROM orders o
+                JOIN tg_users customer ON customer.id = o.tg_user_id
+                LEFT JOIN plans p ON p.id = o.plan_id
+                WHERE customer.referred_by_user_id = ?
+                ORDER BY o.id DESC
+                LIMIT ?
+                """,
+                (partner_user_id, max(1, int(limit))),
+            ).fetchall()
+
+    def list_partner_payouts(self, partner_user_id: int, *, limit: int = 20) -> list[sqlite3.Row]:
+        with self.connect() as conn:
+            return conn.execute(
+                """
+                SELECT id, amount_rub, note, created_at
+                FROM partner_payouts
+                WHERE user_id = ?
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (partner_user_id, max(1, int(limit))),
+            ).fetchall()
+
+    def get_user_profile(self, user_id: int) -> sqlite3.Row | None:
+        with self.connect() as conn:
+            return conn.execute(
+                """
+                SELECT u.*,
+                       inviter.telegram_id AS inviter_telegram_id,
+                       inviter.username AS inviter_username,
+                       (
+                           SELECT COUNT(*)
+                           FROM orders o
+                           WHERE o.tg_user_id = u.id
+                       ) AS orders_count,
+                       (
+                           SELECT COUNT(*)
+                           FROM orders o
+                           WHERE o.tg_user_id = u.id
+                             AND o.status = 'delivered'
+                             AND COALESCE(o.is_trial, 0) = 0
+                       ) AS delivered_orders_count,
+                       (
+                           SELECT COUNT(*)
+                           FROM tg_users child
+                           WHERE child.referred_by_user_id = u.id
+                       ) AS referred_users_count,
+                       (
+                           SELECT COUNT(*)
+                           FROM orders o
+                           JOIN tg_users child ON child.id = o.tg_user_id
+                           WHERE child.referred_by_user_id = u.id
+                             AND o.status = 'delivered'
+                             AND COALESCE(o.is_trial, 0) = 0
+                       ) AS referred_paid_orders_count,
+                       (
+                           SELECT COALESCE(SUM(o.amount_rub), 0)
+                           FROM orders o
+                           JOIN tg_users child ON child.id = o.tg_user_id
+                           WHERE child.referred_by_user_id = u.id
+                             AND o.status = 'delivered'
+                             AND COALESCE(o.is_trial, 0) = 0
+                       ) AS referred_paid_revenue_rub
+                FROM tg_users u
+                LEFT JOIN tg_users inviter ON inviter.id = u.referred_by_user_id
+                WHERE u.id = ?
+                """,
+                (user_id,),
+            ).fetchone()
 
     def get_user_profile_by_telegram_id(self, telegram_id: int) -> sqlite3.Row | None:
         with self.connect() as conn:

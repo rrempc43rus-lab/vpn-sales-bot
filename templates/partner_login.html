@@ -1,0 +1,10 @@
+{% extends "partner_base.html" %}
+{% block content %}
+<section class="card stack">
+  <h2>Вход для партнера</h2>
+  <p class="muted">Откройте этот кабинет по кнопке из Telegram-бота. Там для вас создается безопасная ссылка входа.</p>
+  {% if support_contact_url %}
+  <a href="{{ support_contact_url }}" class="button">Связаться с поддержкой</a>
+  {% endif %}
+</section>
+{% endblock %}

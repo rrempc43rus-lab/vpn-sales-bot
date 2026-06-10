@@ -69,6 +69,22 @@ def require_admin(request: Request, settings: Settings) -> RedirectResponse | No
     return None
 
 
+def require_partner(request: Request, db: Database) -> sqlite3.Row | RedirectResponse:
+    partner_user_id = request.session.get("partner_user_id")
+    if not partner_user_id:
+        return RedirectResponse("/partner/login", status_code=302)
+    try:
+        user_id = int(partner_user_id)
+    except (TypeError, ValueError):
+        request.session.pop("partner_user_id", None)
+        return RedirectResponse("/partner/login", status_code=302)
+    profile = db.get_user_profile(user_id)
+    if profile is None or int(profile["is_partner"] or 0) != 1:
+        request.session.pop("partner_user_id", None)
+        return RedirectResponse("/partner/login", status_code=302)
+    return profile
+
+
 def row_to_plan_form(plan: sqlite3.Row | None) -> dict[str, object]:
     if plan is None:
         return {
@@ -236,6 +252,77 @@ def build_router(
                 "support_contact": support_contact,
                 "support_contact_url": support_contact_url(support_contact),
                 "nav_items": build_legal_nav(),
+            },
+        )
+
+    @router.get("/partner/login", response_class=HTMLResponse)
+    async def partner_login_page(request: Request):
+        ui_values = get_interface_settings(db, settings)
+        support_contact = ui_values.get("support_contact", settings.support_contact)
+        return templates.TemplateResponse(
+            "partner_login.html",
+            {
+                "request": request,
+                "bot_name": ui_values.get("brand_name", settings.bot_name),
+                "brand_tagline": ui_values.get("brand_tagline", ""),
+                "support_contact": support_contact,
+                "support_contact_url": support_contact_url(support_contact),
+            },
+        )
+
+    @router.get("/partner/auth/{token}")
+    async def partner_auth(request: Request, token: str):
+        partner = db.get_partner_by_access_token(token)
+        if partner is None:
+            return RedirectResponse("/partner/login", status_code=302)
+        request.session["partner_user_id"] = int(partner["id"])
+        return RedirectResponse("/partner", status_code=302)
+
+    @router.get("/partner/logout")
+    async def partner_logout(request: Request):
+        request.session.pop("partner_user_id", None)
+        return RedirectResponse("/partner/login", status_code=302)
+
+    @router.get("/partner", response_class=HTMLResponse)
+    async def partner_dashboard(request: Request):
+        partner = require_partner(request, db)
+        if isinstance(partner, RedirectResponse):
+            return partner
+        ui_values = get_interface_settings(db, settings)
+        support_contact = ui_values.get("support_contact", settings.support_contact)
+        partner_label = str(partner["partner_name"] or partner["username"] or partner["telegram_id"])
+        partner_referral_link = None
+        if partner["referral_code"]:
+            try:
+                me = await bot.get_me()
+            except Exception:  # noqa: BLE001
+                me = None
+            if me and me.username:
+                partner_referral_link = f"https://t.me/{me.username}?start=ref_{partner['referral_code']}"
+        stats = {
+            "clients": int(partner["referred_users_count"] or 0),
+            "paid_orders": int(partner["referred_paid_orders_count"] or 0),
+            "revenue_rub": int(partner["referred_paid_revenue_rub"] or 0),
+            "commission_percent": int(partner["partner_commission_percent"] or 0),
+            "balance_rub": int(partner["partner_balance_rub"] or 0),
+            "earned_rub": int(partner["total_partner_earned_rub"] or 0),
+            "paid_out_rub": int(partner["partner_paid_out_rub"] or 0),
+        }
+        return templates.TemplateResponse(
+            "partner_dashboard.html",
+            {
+                "request": request,
+                "bot_name": ui_values.get("brand_name", settings.bot_name),
+                "brand_tagline": ui_values.get("brand_tagline", ""),
+                "partner": partner,
+                "partner_label": partner_label,
+                "stats": stats,
+                "partner_referral_link": partner_referral_link,
+                "orders": db.list_partner_orders(int(partner["id"])),
+                "payouts": db.list_partner_payouts(int(partner["id"])),
+                "support_contact": support_contact,
+                "support_contact_url": support_contact_url(support_contact),
+                "status_label": status_label,
             },
         )
 

@@ -393,6 +393,10 @@ td {
   gap: 18px;
 }
 
+.partner-shell {
+  width: min(1180px, calc(100% - 32px));
+}
+
 .public-hero h1 {
   margin-bottom: 6px;
 }
@@ -431,6 +435,10 @@ td {
 
 .public-cards {
   margin-top: 18px;
+}
+
+.partner-cards {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .public-card-link {
@@ -474,6 +482,10 @@ td {
   .field-grid,
   .field-grid.three,
   .public-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .partner-cards {
     grid-template-columns: 1fr;
   }
 

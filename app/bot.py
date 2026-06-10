@@ -421,6 +421,7 @@ def orders_keyboard(orders: list, ui: dict[str, str]) -> InlineKeyboardMarkup:
 
 def order_keyboard(settings: Settings, order, support_contact: str, ui: dict[str, str]) -> InlineKeyboardMarkup:
     rows: list[list[InlineKeyboardButton]] = []
+    partner_cabinet_url = None
     payment_url = str(order["payment_url"] or "").strip()
     status = str(order["status"])
     is_trial = int(order["is_trial"] or 0) == 1
@@ -437,6 +438,10 @@ def order_keyboard(settings: Settings, order, support_contact: str, ui: dict[str
     if status == "delivered" and short_link and short_link != proxy_link:
         rows.append([InlineKeyboardButton(text=ui["button_short_link"], url=short_link)])
 
+    if partner_cabinet_url:
+        rows.append([InlineKeyboardButton(text="💼 ЛК партнера", url=partner_cabinet_url)])
+    if partner_cabinet_url:
+        rows.append([InlineKeyboardButton(text="💼 ЛК партнера", url=partner_cabinet_url)])
     support_url = support_contact_url(support_contact)
     if support_url:
         rows.append([InlineKeyboardButton(text=ui["button_write_support"], url=support_url)])
@@ -450,7 +455,12 @@ def order_keyboard(settings: Settings, order, support_contact: str, ui: dict[str
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def profile_keyboard(ui: dict[str, str], share_url: str | None, support_contact: str) -> InlineKeyboardMarkup:
+def profile_keyboard(
+    ui: dict[str, str],
+    share_url: str | None,
+    support_contact: str,
+    partner_cabinet_url: str | None = None,
+) -> InlineKeyboardMarkup:
     rows: list[list[InlineKeyboardButton]] = []
     if share_url:
         rows.append([InlineKeyboardButton(text="🎁 Пригласить друга", url=share_url)])
@@ -559,8 +569,18 @@ def build_router(settings: Settings, db: Database, bot: Bot, xui: XuiClient, pla
 
         bot_username = await get_bot_username()
         share_url = build_referral_share_url(bot_username, str(profile["referral_code"]), current_ui)
+        partner_cabinet_url = None
+        if int(profile["is_partner"] or 0) == 1:
+            try:
+                partner_token = db.get_or_create_partner_access_token(int(profile["id"]))
+            except ValueError:
+                partner_token = ""
+            if partner_token:
+                partner_cabinet_url = f"{settings.public_base_url.rstrip('/')}/partner/auth/{partner_token}"
         text = profile_text(settings, current_ui, profile, bot_username, support_contact, db.get_loyalty_settings())
-        markup = profile_keyboard(current_ui, share_url, support_contact)
+        if partner_cabinet_url:
+            text = f"{text}\n\nЛК партнера:\n{partner_cabinet_url}"
+        markup = profile_keyboard(current_ui, share_url, support_contact, partner_cabinet_url)
         if isinstance(target, CallbackQuery):
             await target.message.edit_text(text, reply_markup=markup)
             await safe_answer(target)

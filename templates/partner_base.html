@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{ bot_name }} - Партнерский кабинет</title>
+    <link rel="stylesheet" href="/static/app.css" />
+  </head>
+  <body class="public-body">
+    <main class="public-shell partner-shell">
+      <section class="public-hero card">
+        <div class="eyebrow">PARTNER CABINET</div>
+        <h1>{{ bot_name }}</h1>
+        {% if brand_tagline %}
+        <p class="muted">{{ brand_tagline }}</p>
+        {% endif %}
+      </section>
+      {% block content %}{% endblock %}
+    </main>
+  </body>
+</html>

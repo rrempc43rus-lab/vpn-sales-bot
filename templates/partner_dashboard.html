@@ -1,0 +1,112 @@
+{% extends "partner_base.html" %}
+{% block content %}
+<nav class="public-nav card">
+  <a href="/partner" class="public-nav-link">Сводка</a>
+  <a href="/partner/logout" class="public-nav-link">Выйти</a>
+  {% if support_contact_url %}
+  <a href="{{ support_contact_url }}" class="public-nav-link" target="_blank" rel="noopener noreferrer">Поддержка</a>
+  {% endif %}
+</nav>
+
+<section class="card stack">
+  <div class="section-heading">
+    <div>
+      <h2>{{ partner_label }}</h2>
+      <p class="muted">Telegram ID: {{ partner.telegram_id }} • Ставка: {{ stats.commission_percent }}%</p>
+    </div>
+  </div>
+  {% if partner_referral_link %}
+  <div class="stack compact">
+    <strong>Ваша партнерская ссылка</strong>
+    <div class="mono break">{{ partner_referral_link }}</div>
+  </div>
+  {% endif %}
+</section>
+
+<section class="grid cards partner-cards">
+  <article class="card stat">
+    <span>Клиенты</span>
+    <strong>{{ stats.clients }}</strong>
+  </article>
+  <article class="card stat">
+    <span>Оплаченные заказы</span>
+    <strong>{{ stats.paid_orders }}</strong>
+  </article>
+  <article class="card stat">
+    <span>Выручка по вашим клиентам</span>
+    <strong>{{ stats.revenue_rub }} RUB</strong>
+  </article>
+  <article class="card stat">
+    <span>Баланс к выплате</span>
+    <strong>{{ stats.balance_rub }} RUB</strong>
+  </article>
+  <article class="card stat">
+    <span>Всего начислено</span>
+    <strong>{{ stats.earned_rub }} RUB</strong>
+  </article>
+  <article class="card stat">
+    <span>Уже выплачено</span>
+    <strong>{{ stats.paid_out_rub }} RUB</strong>
+  </article>
+</section>
+
+<section class="grid two">
+  <article class="card">
+    <h2>Последние заказы</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Заказ</th>
+          <th>Клиент</th>
+          <th>Сумма</th>
+          <th>Вам</th>
+          <th>Статус</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for order in orders %}
+        <tr>
+          <td>
+            <div>#{{ order.public_id }}</div>
+            <div class="muted">{{ order.plan_name }}</div>
+          </td>
+          <td>
+            <div>{{ order.customer_username or order.customer_first_name or order.customer_telegram_id }}</div>
+            <div class="muted">{{ order.customer_telegram_id }}</div>
+          </td>
+          <td>{{ order.amount_rub }} RUB</td>
+          <td>{{ order.partner_reward_rub }} RUB</td>
+          <td><span class="status">{{ status_label(order.status) }}</span></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5">Пока нет заказов по вашей ссылке.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </article>
+
+  <article class="card">
+    <h2>История выплат</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Дата</th>
+          <th>Сумма</th>
+          <th>Примечание</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for payout in payouts %}
+        <tr>
+          <td>{{ payout.created_at }}</td>
+          <td>{{ payout.amount_rub }} RUB</td>
+          <td>{{ payout.note or "-" }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="3">Выплат пока не было.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </article>
+</section>
+{% endblock %}
